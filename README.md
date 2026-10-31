@@ -45,6 +45,16 @@ Drag the dividers to resize; double-click one to reset it. View > Layout has two
 - [z3rTracker](https://github.com/okay-dude/z3rTracker) by GGW, fearagent, dunka and bonta; bundled in `vendor/z3rTracker`.
 - [racetime.gg](https://racetime.gg/).
 
+## License
+
+The app's own code is [MIT](LICENSE).
+
+That license does not cover anything the app loads or bundles from others:
+
+- `vendor/z3rTracker` is z3rTracker by GGW and contributors, included as published with its credits in `vendor/z3rTracker/about.txt`. It stays under its authors' terms.
+- The muffins tracker, Stonks Tracker and racetime.gg are loaded from their own sites and belong to their owners.
+- The Legend of Zelda and its sprites, including the boots in the app icon, are property of Nintendo. This is an unofficial fan tool.
+
 ## Building
 
 ```
