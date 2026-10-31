@@ -1,0 +1,6 @@
+.entrant-row > .finish-time,
+.entrant-row > .status-or-time.done,
+.entrant-row > .user > .comment { filter: blur(6px); transition: filter 0.15s; }
+.entrant-row:hover > .finish-time,
+.entrant-row:hover > .status-or-time.done,
+.entrant-row:hover > .user > .comment { filter: none; }

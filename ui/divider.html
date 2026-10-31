@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #h { position: absolute; inset: 0; cursor: row-resize; }
+  #h.v { cursor: col-resize; }
+  #h:hover, #h.drag { background: #2f6fdc; }
+</style>
+</head>
+<body>
+<div id="h" title="Drag to resize. Double-click to reset."></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const id = q.get('id');
+  const h = document.getElementById('h');
+  if (q.get('o') === 'v') h.classList.add('v');
+  let start = null;
+  h.addEventListener('pointerdown', (e) => {
+    h.setPointerCapture(e.pointerId);
+    start = { x: e.screenX, y: e.screenY };
+    h.classList.add('drag');
+    api.send('drag-start', id);
+  });
+  h.addEventListener('pointermove', (e) => {
+    if (start) api.send('drag-move', id, e.screenX - start.x, e.screenY - start.y);
+  });
+  const end = () => {
+    if (!start) return;
+    start = null;
+    h.classList.remove('drag');
+    api.send('drag-end', id);
+  };
+  h.addEventListener('pointerup', end);
+  h.addEventListener('lostpointercapture', end);
+  h.addEventListener('dblclick', () => api.send('drag-reset', id));
+</script>
+</body>
+</html>

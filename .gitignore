@@ -1,0 +1,7 @@
+node_modules
+node_modules.nosync
+build.nosync
+dist.nosync
+dist
+build/icon.iconset
+.DS_Store

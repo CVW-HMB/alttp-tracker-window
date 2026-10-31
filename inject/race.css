@@ -1,0 +1,32 @@
+/* Compact single-column race room for a small pane. */
+body { min-width: 0 !important; min-height: 0 !important; height: 100vh !important; }
+
+header { height: 30px !important; min-height: 0 !important; padding: 0 6px !important; }
+header .title h1 { margin: 0 !important; height: 30px !important; display: flex !important; align-items: center; }
+header .title h1 a { display: flex !important; align-items: center; gap: 4px; }
+header .title h1 img { height: 22px !important; width: auto !important; }
+header .title h1 span { font-size: 16px !important; line-height: 30px !important; }
+header .user-info { align-items: center; }
+header .user-info .btn, header .user-info > a { padding: 2px 8px !important; font-size: 12px !important; line-height: 18px !important; }
+
+.container { min-height: 0 !important; }
+.container > .content { display: flex !important; flex-direction: column !important; margin: 0 !important; padding: 4px 6px !important; gap: 4px; min-height: 0 !important; overflow: hidden; }
+.container > .content > aside { display: contents !important; }
+.container > .content > main { order: 3; display: flex !important; flex-direction: column !important; flex: 1 1 0 !important; min-height: 0 !important; padding: 0 !important; margin: 0 !important; }
+
+.race-actions { order: 1; margin: 0 !important; }
+.race-actions:empty { display: none !important; }
+.race-status { order: 2; display: flex !important; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 10px !important; margin: 0 !important; min-height: 0 !important; }
+.race-status > .timer { font-size: 28px !important; line-height: 1.1 !important; padding: 0 !important; margin: 0 !important; }
+.race-status > .state { text-align: right; padding: 0 !important; }
+.race-status > .state > .value { font-size: 14px !important; }
+.race-status > .state > .help, .race-status > .settings { display: none !important; }
+.race-chat { order: 4; flex: 1 1 0 !important; min-height: 80px !important; margin: 0 !important; }
+
+.race-intro { display: block !important; padding: 0 !important; margin: 0 0 2px !important; flex: 0 0 auto !important; }
+.race-info { padding: 0 !important; }
+.race-info > .category, .race-info > .goal, .race-meta, .race-stream-control, .race-nav { display: none !important; }
+.race-info > .breadcrumbs { font-size: 12px !important; margin: 0 !important; }
+.race-info > .info { display: block !important; font-size: 11px !important; line-height: 1.3 !important; max-height: 2.8em; overflow: auto; margin: 0 !important; }
+.race-entrants { display: block !important; flex: 1 1 auto !important; min-height: 50px; overflow-y: auto !important; margin: 0 !important; }
+.race-monitor { display: block !important; }

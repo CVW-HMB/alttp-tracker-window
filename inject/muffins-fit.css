@@ -1,0 +1,3 @@
+html, body { overflow: hidden !important; background: #000 !important; margin: 0 !important; }
+body { zoom: var(--fit, 1); }
+#app { overflow: visible !important; }

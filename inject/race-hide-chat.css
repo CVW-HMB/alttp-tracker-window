@@ -1,0 +1,11 @@
+.race-chat { flex: 0 0 auto !important; min-height: 0 !important; }
+.race-chat > .messages,
+.race-chat > .scrollwarning { display: none !important; }
+.race-chat::before {
+  content: "Chat hidden";
+  display: block;
+  padding: 3px 8px;
+  color: #8a8f98;
+  font-size: 11px;
+  text-align: center;
+}

@@ -1,0 +1,887 @@
+<html>
+	<head>
+		<meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+		<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+		<meta http-equiv="Pragma" content="no-cache" />
+		<meta http-equiv="Expires" content="0" />
+		<title>Berserker's Tracker by GGW</title>
+
+		<script src="js/jquery-3.3.1.js"></script>
+		<link rel="stylesheet" type="text/css" href="css/style.css">
+		
+		<script src="js/settings.js"></script>
+		<script src="js/default-config.js"></script>
+		<script src="js/persist.js"></script>
+		<script src="js/config.js"></script>
+		<script src="js/block.js"></script>
+		<script src="js/one-map.js"></script>
+		<script src="js/locations.js"></script>
+		<script src="js/checks.js"></script>
+		<script src="js/text-tracker.js"></script>
+		<script src="js/icon-bounds.js"></script>
+		<script src="js/visit-marks.js"></script>
+		<script src="js/map-tracker.js"></script>
+		<script src="js/coop.js"></script>
+		<script src="js/tooltip.js"></script>
+		<script src="js/connectors.js"></script>
+		<script src="js/mover.js"></script>
+		<script src="js/resizer.js"></script>
+		<script src="js/zoomer.js"></script>
+		<script src="js/menu.js"></script>
+		<script src="js/autot.js"></script>
+		<script src="js/index.js"></script>
+	</head>
+
+	<body>
+		<div id="end-race" class="end-race coop-hidden">
+			<button id="end-race-button" class="end-race-button">End race</button>
+		</div>
+		<div id="end-race-overlay" class="coop-overlay coop-hidden">
+			<div class="coop-backdrop"></div>
+			<div class="coop-modal end-race-modal">
+				<div class="coop-modal-title">End the race?</div>
+				<div class="coop-intro">This clears the board and takes you back to the settings screen. The board is kept one step back, so it can be brought back from there if you change your mind. If you are in a co-op game you leave it; your partner keeps their board.</div>
+				<div class="coop-foot-buttons end-race-actions">
+					<button id="end-race-yes" class="coop-restart">Yes, end the race</button>
+					<button id="end-race-no" class="coop-done">Keep playing</button>
+				</div>
+			</div>
+		</div>
+		<div id="coop-blocker" class="coop-blocker coop-hidden">
+			<div class="coop-blocker-box">
+				<div class="coop-blocker-title">Lost the connection to the host</div>
+				<div>Your board is frozen so it cannot drift away from the host's. Trade new codes to reconnect, or leave co-op and keep playing on your own with the board as it is.</div>
+				<div class="coop-foot-buttons">
+					<button id="coop-reconnect" class="coop-done">Reconnect</button>
+					<button id="coop-leave" class="coop-restart">Leave co-op</button>
+				</div>
+			</div>
+		</div>
+		<div id="coop-overlay" class="coop-overlay coop-hidden">
+			<div class="coop-backdrop"></div>
+			<div class="coop-modal">
+				<button id="coop-close" class="coop-close" title="Close">&times;</button>
+				<div class="coop-modal-title">Co-op with a partner</div>
+				<div class="coop-intro">Play with one other person over the internet. No server, nothing to install. The <b>host</b> creates the invite: the host's spoiler and visit-marks setting are used for both of you, the host presses OK Dude for both, and the host's board is the master copy that the joiner's board follows every half second. Your layout, panels, icons and auto-tracking stay your own. You trade two short codes in Discord or any chat.</div>
+				<div id="coop-resume-note" class="coop-resume-note coop-hidden"></div>
+				<div id="coop-roles" class="coop-roles">
+					<button id="coop-create">Host a game<span class="coop-sub">I'll create the invite</span></button>
+					<button id="coop-join">Join a host<span class="coop-sub">I have an invite code</span></button>
+				</div>
+				<div id="coop-create-flow" class="coop-flow coop-hidden">
+					<div class="coop-step"><span class="coop-num">1</span> Send this invite code to your partner:</div>
+					<textarea id="coop-offer" class="coop-code" readonly placeholder="generating…"></textarea>
+					<button id="coop-copy-offer" class="coop-copy">Copy invite code</button>
+					<div class="coop-step"><span class="coop-num">2</span> Paste the reply code they send back, then connect:</div>
+					<textarea id="coop-answer-in" class="coop-code" placeholder="paste your partner's reply code here"></textarea>
+					<button id="coop-connect" class="coop-go">Connect</button>
+					<div class="coop-hint">Once connected, load your spoiler and set up as usual and press OK Dude: your partner's board starts with yours. If you already pressed it, they load your board as soon as they connect.</div>
+				</div>
+				<div id="coop-join-flow" class="coop-flow coop-hidden">
+					<div class="coop-step"><span class="coop-num">1</span> Paste the invite code your partner sent you:</div>
+					<textarea id="coop-offer-in" class="coop-code" placeholder="paste your partner's invite code here"></textarea>
+					<button id="coop-make-reply" class="coop-go">Create reply</button>
+					<div id="coop-reply-step" class="coop-step coop-hidden"><span class="coop-num">2</span> Send this reply code back to your partner:</div>
+					<textarea id="coop-answer" class="coop-code coop-hidden" readonly placeholder="reply will appear here"></textarea>
+					<button id="coop-copy-answer" class="coop-copy coop-hidden">Copy reply code</button>
+					<div id="coop-wait" class="coop-step coop-hidden">Waiting for the host to press Connect…</div>
+				</div>
+				<div id="coop-connected-host" class="coop-connected coop-hidden">Partner connected. Your spoiler and visit-marks setting are used for both of you; their layout stays theirs. Press OK Dude when you are ready; if you already have, your partner is loading your board now.</div>
+				<div id="coop-connected-client" class="coop-connected coop-hidden"></div>
+				<div id="coop-error" class="coop-error"></div>
+				<div class="coop-modal-foot">
+					<span id="coop-status-modal" class="coop-status">not connected</span>
+					<span class="coop-foot-buttons">
+						<button id="coop-restart" class="coop-restart">Start over</button>
+						<button id="coop-done" class="coop-done">Done</button>
+					</span>
+				</div>
+				<div class="coop-note">Works on most home networks. If one of you is on mobile data, a strict work network or a VPN, the direct connection may not go through; try another network.</div>
+			</div>
+		</div>
+		<div id="options">
+			<div class="options-title">Settings</div>
+			<div id="coop-lock-banner" class="banner banner-orange coop-hidden"></div>
+			<div id="previous" class="banner banner-blue coop-hidden">
+				<span>Race ended at <span id="previous-ended-at"></span>.</span>
+				<button id="previous-button" class="coop-done">Bring it back</button>
+			</div>
+			<div id="resume" class="banner banner-orange coop-hidden">
+				<span>Saved session from <span id="resume-saved-at"></span> found. To start fresh, load a config and press OK Dude.</span>
+				<button id="resume-button" class="coop-done">Resume</button>
+			</div>
+
+			<div class="settings-section">
+				<div class="settings-label">Config</div>
+				<div class="settings-options settings-stack">
+					<span id="config-summary" class="settings-note">Built-in defaults are loaded.</span>
+					<label class="settings-inline">Import a settings file: <input id="config-file" type="file" accept=".json,application/json" /></label>
+				</div>
+			</div>
+			<div class="settings-section">
+				<div class="settings-label">Spoiler</div>
+				<div class="settings-options">
+					<button id="spoiler-open" class="settings-button">Paste or load a spoiler…</button>
+					<span id="spoiler-summary" class="settings-note">No spoiler loaded</span>
+				</div>
+			</div>
+			<div class="settings-section">
+				<div class="settings-label">Layout</div>
+				<div class="settings-options">
+					<label><input type="checkbox" value="1" id="enable-maps" /> Show maps</label>
+					<label><input type="checkbox" value="1" id="enable-one-map" /> One map (Tab or Backspace switches)</label>
+					<label><input type="checkbox" value="1" id="enable-og-sephs" /> Old seph's icons</label>
+				</div>
+			</div>
+			<div class="settings-section">
+				<div class="settings-label">Panels</div>
+				<div class="settings-options">
+					<label><input type="checkbox" value="1" id="enable-drop-down" /> Drop-downs</label>
+					<label><input type="checkbox" value="1" id="enable-multi" /> Multi</label>
+					<label><input type="checkbox" value="1" id="enable-single" /> Single</label>
+					<label><input type="checkbox" value="1" id="enable-visible" /> Visible items</label>
+					<label><input type="checkbox" value="1" id="enable-overworld" /> Overworld</label>
+					<label><input type="checkbox" value="1" id="enable-connectors" /> Connectors</label>
+					<label data-tip-title="Checks box" data-tip="A box with five counts of what is still to be found: overworld checks, items in single-item caves, items in multi-item caves, items behind drop-downs and items in dungeons. They add up to every check in the game. The auto-tracker, the text boxes and the chests on the map all lower them, and each count has arrows to change it by hand."><input type="checkbox" value="1" id="enable-checks" /> Checks</label>
+				</div>
+			</div>
+			<div class="settings-section">
+				<div class="settings-label">Tracking</div>
+				<div class="settings-options">
+					<label data-tip-title="Visit marks" data-tip="Puts an orange box on every icon. Left click an icon to toggle its box off once you have cleared that spot. Shift+click still opens the icon menu to replace an entrance."><input type="checkbox" value="1" id="enable-visit-marks" /> Visit marks</label>
+					<span class="settings-group">
+						<label><input type="checkbox" value="1" id="enable-auto-tracking" /> Auto-tracking</label>
+						<label class="settings-inline">port <input type="text" value="23074" id="auto-tracking-port" /></label>
+					</span>
+				</div>
+			</div>
+			<div class="settings-section">
+				<div class="settings-label">Co-op</div>
+				<div class="settings-options coop-launch">
+					<button id="coop-open" class="settings-button">Play co-op with a partner…</button>
+					<span id="coop-status-inline" class="coop-status">not connected</span>
+				</div>
+			</div>
+			<div class="button-container">
+				<button id="load-button">OK Dude</button>
+			</div>
+
+			<div id="spoiler-overlay" class="coop-overlay coop-hidden">
+				<div class="coop-backdrop"></div>
+				<div class="coop-modal spoiler-modal">
+					<button id="spoiler-close" class="coop-close" title="Close">&times;</button>
+					<div class="coop-modal-title">Spoiler log</div>
+					<div class="coop-intro">Paste the spoiler, or choose the file: an alttpr.com spoiler (Veetorp's randomizer, crosskeys included; the JSON you download from the seed page) or a Door Randomizer spoiler (the text log). Shuffled entrances and dungeon prizes are placed on the maps when you press OK Dude; a seed without entrance shuffle still gets its prizes.</div>
+					<div class="spoiler-file">
+						<input id="spoiler-file" type="file" accept=".txt,.json,.log,text/plain,application/json" />
+					</div>
+					<textarea id="spoiler" placeholder="paste the spoiler text here"></textarea>
+					<div class="coop-foot-buttons spoiler-actions">
+						<span id="spoiler-modal-summary" class="settings-note"></span>
+						<span class="coop-foot-buttons">
+							<button id="spoiler-clear" class="coop-restart">Clear</button>
+							<button id="spoiler-done" class="coop-done">Done</button>
+						</span>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div id="tracker">
+			<div id="drop-down" class="location-container drag-container resizer-container">
+				<div class="text-title drag">Drop downs</div>
+				<div class="text-location blue" data-chest="55" data-chesttype="visible">escape</div>
+				<div class="text-location blue" data-chesttype="visible">ganon</div>
+				<div class="text-location blue" data-chest="14" data-chesttype="visible">kak well</div>
+				<div class="text-location blue" data-chest="36" data-chesttype="visible">lost woods</div>
+				<div class="text-location blue" data-chest="37" data-chesttype="visible">lumberjack</div>
+				<div class="text-location blue" data-chest="59" data-chesttype="visible">magic bat</div>
+				<div class="text-location blue" data-chest="56">uncle</div>
+				<div class="text-location blue">useless fairy</div>
+				<div class="resizer"></div>
+			</div>
+			<div id="multi-chest" class="location-container drag-container resizer-container">
+				<div class="text-title drag">Multi</div>
+				<div class="text-location blue" data-chest="17">paradox</div>
+				<div class="text-location blue" data-chest="15">blinds hut</div>
+				<div class="text-location blue" data-chest="16">hype cave</div>
+				<div class="text-location blue" data-chest="19">mini mdorm</div>
+				<div class="text-location blue" data-chest="71" data-chesttype="multi">HS cave</div>
+				<div class="text-location blue" data-chest="70" data-chesttype="multi">saha</div>
+				<div class="text-location blue" data-chest="10">mire shed</div>
+				<div class="text-location blue" data-chest="61">pyr fairy</div>
+				<div class="text-location blue" data-chest="11">super bunny</div>
+				<div class="text-location blue" data-chest="64">waterfall</div>
+				<div class="resizer"></div>
+			</div>
+			<div id="single-chest" class="location-container drag-container resizer-container">
+				<div class="text-title drag">Single</div>
+				<div class="text-location blue" data-chest="9">agina</div>
+				<div class="text-location blue" data-chest="18">bonk rocks</div>
+				<div class="text-location blue" data-chest="7">brewery</div>
+				<div class="text-location blue" data-chest="8">c house</div>
+				<div class="text-location blue" data-chest="39">cave 45</div>
+				<div class="text-location blue" data-chest="41">checkerboard</div>
+				<div class="text-location blue" data-chest="23">chest game</div>
+				<div class="text-location blue" data-chest="6">chickens</div>
+				<div class="text-location blue" data-chest="1">dam chest</div>
+				<div class="text-location blue" data-chest="40">GYL</div>
+				<div class="text-location blue" data-chest="42">hammer pegs</div>
+				<div class="text-location blue" data-chest="20">IR cave</div>
+				<div class="text-location blue" data-chest="5">kak tavern</div>
+				<div class="text-location blue" data-chest="72">kings tomb</div>
+				<div class="text-location blue" data-chest="43" data-chesttype="visible">library</div>
+				<div class="text-location blue" data-chest="2">links house</div>
+				<div class="text-location blue" data-chest="4">mimic cave</div>
+				<div class="text-location blue" data-chest="35">potion shop</div>
+				<div class="text-location blue" data-chest="27">sick kid</div>
+				<div class="text-location blue" data-chest="38" data-chesttype="visible">spec CAVE</div>
+				<div class="text-location blue" data-chest="13">spike cave</div>
+				<div class="text-location blue" data-chest="3">spiral cave</div>
+				<div class="resizer"></div>
+			</div>
+			<div id="visible-items" class="location-container drag-container resizer-container">
+				<div class="text-title drag">Visible Items</div>
+				<div class="text-location blue" data-chest="50" data-chesttype="visible">bumper ledge</div>
+				<div class="text-location blue" data-chest="48" data-chesttype="visible">desert ledge</div>
+				<div class="text-location blue" data-chest="46" data-chesttype="visible">floating isl</div>
+				<div class="text-location blue" data-chest="49" data-chesttype="visible">hylia island</div>
+				<div class="text-location blue" data-chest="47" data-chesttype="visible">maze game</div>
+				<div class="text-location blue" data-chest="51" data-chesttype="visible">pyramid</div>
+				<div class="text-location blue" data-chest="45" data-chesttype="visible">spec ROCK</div>
+				<div class="text-location blue" data-chest="53" data-chesttype="visible">zora ledge</div>
+				<div class="text-location blue" data-chest="31" data-chesttype="visible">bombos tab</div>
+				<div class="text-location blue" data-chest="30" data-chesttype="visible">ether tab</div>
+				<div class="text-location blue" data-chest="62" data-chesttype="visible">ped</div>
+				<div class="text-location blue" data-chest="73" data-chesttype="visible">desert torch</div>
+				<div class="text-location blue" data-chest="74" data-chesttype="visible">gt torch</div>
+				<div class="resizer"></div>
+			</div>
+			<div id="overworld" class="location-container drag-container resizer-container">
+				<div class="text-title drag">Overworld</div>
+				<div class="text-location blue" data-chest="54">1 dig</div>
+				<div class="text-location blue" data-chest="52">30 digs</div>
+				<div class="text-location blue" data-chest="24">bottle vend</div>
+				<div class="text-location blue" data-chest="32">catfish</div>
+				<div class="text-location blue" data-chest="29">hobo</div>
+				<div class="text-location blue" data-chest="44">mushroom</div>
+				<div class="text-location blue" data-chest="34">old man</div>
+				<div class="text-location blue" data-chest="28">purple chest</div>
+				<div class="text-location blue" data-chest="60">smiths</div>
+				<div class="text-location blue" data-chest="26">stumpy</div>
+				<div class="text-location blue" data-chest="69">sunken item</div>
+				<div class="text-location blue" data-chest="33">zora</div>
+				<div class="resizer"></div>
+			</div>
+			<div id="connectors" class="location-container drag-container resizer-container">
+				<div class="text-title drag">Connectors</div>
+				<div class="resizer"></div>
+			</div>
+			<div id="checks" class="location-container drag-container resizer-container">
+				<div class="text-title drag">Checks left <span id="checks-total" class="checks-total"></span></div>
+				<div id="checks-grid" class="checks-grid"></div>
+				<div class="resizer"></div>
+			</div>
+			
+			<div id="one-map" class="one-map map-container drag-container zoomer-container">
+				<div class="zoom-in">+</div>
+				<div class="zoom-out">-</div>
+				<div class="drag-map drag"></div>
+				<div class="swap-map"></div>
+			</div>
+			
+			<div id="dark-world-container" class="map-container drag-container zoomer-container">
+				<div class="zoom-in">+</div>
+				<div class="zoom-out">-</div>
+				<div class="drag-map drag"></div>
+				<div id="dark-world" class="map-tracker">
+					<div class="find-item"></div>
+				</div>
+			</div>
+			<div id="light-world-container" class="map-container drag-container zoomer-container">
+				<div class="zoom-in">+</div>
+				<div class="zoom-out">-</div>
+				<div class="drag-map drag"></div>
+				<div id="light-world" class="map-tracker">
+					<div class="find-item"></div>
+				</div>
+			</div>
+			
+			<div class="menu-container">
+				<div class="location-menu">
+					<div class="icon" data-key="hy-up" data-connector="true" title="Hyrule Main Entrance">
+						<div class="icon-text hy-color up">
+							Hy
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon" data-key="hy-left" data-connector="true" title="Hyrule Left">
+						<div class="icon-text hy-color left">
+							Hy
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon" data-key="hy-right" data-connector="true" title="Hyrule Right">
+						<div class="icon-text hy-color right">
+							Hy
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="paradox-up" data-connector="true" title="Paradox Top (Mini Moldorms)">
+						<div class="icon-image paradox up">
+							<div class="icon-arrow">^</div>
+						</div>
+						<div class="wide-icon-item icon-count">
+							7
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="paradox-mid" data-connector="true" title="Paradox Middle">
+						<div class="icon-image paradox mid">
+							<div class="icon-arrow">^</div>
+							<div class="icon-arrow">^</div>
+						</div>
+						<div class="wide-icon-item icon-count">
+							7
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="paradox-down" data-connector="true" title="Paradox Push Block Entrance">
+						<div class="icon-image paradox down">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon empty og-sephs-only">
+						<div class="icon-text"></div>
+					</div>
+					<div class="icon empty og-sephs-only">
+						<div class="icon-text"></div>
+					</div>
+					<div class="icon empty og-sephs-only">
+						<div class="icon-text"></div>
+					</div>
+					<div class="icon" data-key="ag" title="Aga Climb Entrance">
+						<div class="icon-text ag-color">Ag</div>
+					</div>
+					<div class="icon" data-key="saha" title="Sahasaharalaha">
+						<div class="icon-text saha-color">Srsh</div>
+						<div class="wide-text-item icon-count">
+							3
+						</div>
+					</div>
+					<div class="icon" data-key="bk" data-amount="unlimited">
+						<div class="icon-image bigkey"></div>
+					</div>
+					<div class="icon" data-key="e" title="Eastern">
+						<div class="icon-text e-color">E</div>
+					</div>
+					<div class="icon" data-key="h" title="Hera">
+						<div class="icon-text h-color">H</div>
+					</div>
+					<div class="icon" data-key="d-down" title="Desert Boss">
+						<div class="icon-text d-color down">
+							D
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon" data-key="d-left" data-connector="true" title="Desert Left">
+						<div class="icon-text d-color left">
+							D
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon" data-key="d-right" data-connector="true" title="Desert Right">
+						<div class="icon-text d-color right">
+							D
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon" data-key="d-up" data-connector="true" title="Desert Main Entrance">
+						<div class="icon-text d-color up">
+							D
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon" data-key="gt">
+						<div class="icon-text gt-color">GT</div>
+					</div>
+					<div class="icon" data-key="kid" title="Sick Kid">
+						<div class="icon-image kid">
+							<div class="icon-count">
+								1
+							</div>
+						</div>
+					</div>
+					<div class="icon" data-key="sk" data-amount="unlimited">
+						<div class="icon-image smallkey"></div>
+					</div>
+					<div class="icon" data-key="pod">
+						<div class="icon-text pod-color">Pod</div>
+					</div>
+					<div class="icon" data-key="sp">
+						<div class="icon-text sp-color">SP</div>
+					</div>
+					<div class="icon" data-key="sw">
+						<div class="icon-text sw-color">SW</div>
+					</div>
+					<div class="icon" data-key="tt">
+						<div class="icon-text tt-color">TT</div>
+					</div>
+					<div class="icon" data-key="ip">
+						<div class="icon-text ip-color">IP</div>
+					</div>
+					<div class="icon" data-key="mm">
+						<div class="icon-text mm-color">MM</div>
+					</div>
+					<div class="icon" data-key="gn" title="Ganon Dropdown">
+						<div class="icon-text gn-color">Gn</div>
+					</div>
+					<div class="icon" data-key="smt" title="Blacksmith">
+						<div class="icon-text smt-color">Smt</div>
+					</div>
+					<div class="icon" data-key="small-chest" data-amount="unlimited">
+						<div class="icon-image small-chest"></div>
+					</div>
+					<div class="icon" data-key="tr-down" data-connector="true" title="Lazer Bridge">
+						<div class="icon-text tr-color down">
+							TR
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon" data-key="tr-left" data-connector="true" title="TR Left">
+						<div class="icon-text tr-color left">
+							TR
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon" data-key="tr-right" data-connector="true" title="TR Right">
+						<div class="icon-text tr-color right">
+							TR
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon" data-key="tr-up" data-connector="true" title="TR Main Entrance">
+						<div class="icon-text tr-color up">
+							TR
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="mimic" title="Mimic Cave">
+						<div class="icon-image mimic"></div>
+					</div>
+					<div class="icon og-sephs-only" data-key="hookshot">
+						<div class="icon-image hookshot"></div>
+					</div>
+					<div class="icon og-sephs-only" data-key="og-potion">
+						<div class="icon-text psh-color">P.Sh</div>
+					</div>
+					<div class="icon new-icons-only" data-key="potion" title="Potion Shop">
+						<div class="icon-image potion"></div>
+					</div>
+					<div class="icon og-sephs-only" data-key="og-redbomb">
+						<div class="icon-text bsh-color">B.Sh</div>
+					</div>
+					<div class="icon new-icons-only" data-key="redbomb" title="Red Bomb Shop">
+						<div class="icon-image red-bomb"></div>
+					</div>
+					<div class="icon" data-key="lib" title="Library">
+						<div class="icon-text lib-color">Lib</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="important2" data-amount="unlimited">
+						<div class="icon-text important-color">
+							!!!
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="multi" data-amount="unlimited">
+						<div class="icon-image multi-chest"></div>
+					</div>
+					<div class="icon" data-key="lamp" data-amount="unlimited">
+						<div class="icon-image lamp"></div>
+					</div>
+					<div class="icon" data-key="hamglove" title="Spike Cave">
+						<div class="icon-image hamglove"></div>
+					</div>
+					<div class="icon" data-key="hammer" data-amount="unlimited">
+						<div class="icon-image hammer"></div>
+					</div>
+					<div class="icon og-sephs-only" data-key="cape">
+						<div class="icon-image cape"></div>
+					</div>
+					<div class="icon" data-key="bat" title="Magic Bat">
+						<div class="icon-image powder"></div>
+					</div>
+					<div class="icon new-icons-only" data-key="hs-up" data-connector="true" title="Hookshot Cave (Floating Island)">
+						<div class="icon-image hookshot up">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="hs-down" data-connector="true" title="Hookshot Cave Main Entrance">
+						<div class="icon-image hookshot down">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="boots" data-amount="unlimited">
+						<div class="icon-image boots"></div>
+					</div>
+					<div class="icon" data-key="entrance" data-amount="unlimited">
+						<div class="icon-image entrance"></div>
+					</div>
+					<div class="icon" data-key="glove" data-amount="unlimited">
+						<div class="icon-image glove"></div>
+					</div>
+					<div class="icon og-sephs-only" data-key="og-bomb" data-amount="unlimited">
+						<div class="icon-image bomb"></div>
+					</div>
+					<div class="icon new-icons-only" data-key="important" data-amount="unlimited">
+						<div class="icon-text important-color">
+							!!!
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="rescue-up" data-connector="true" title="Old Man Rescue End">
+						<div class="icon-image rescue up">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="rescue-down" data-connector="true" title="Old Man Rescue Start">
+						<div class="icon-image rescue down">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="old-man-up" data-connector="true" title="Old Man Back Exit">
+						<div class="icon-image old-man up">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="old-man-down" data-connector="true" title="Old Man S+Q Point">
+						<div class="icon-image old-man down">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="woman-right" data-connector="true" title="Maze Race Right">
+						<div class="icon-image woman right">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="woman-left" data-connector="true" title="Maze Race Left">
+						<div class="icon-image woman left">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="brothers-right" data-connector="true" title="Brothers Right">
+						<div class="icon-image brother right">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="brothers-left" data-connector="true" title="Brothers Left">
+						<div class="icon-image brother left">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="boots2" data-amount="unlimited">
+						<div class="icon-image boots"></div>
+					</div>
+					<div class="icon new-icons-only" data-key="fa-down" data-connector="true" title="Fairy Ascent Cave">
+						<div class="icon-text fa-color down">
+							FA
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="fa-up" data-connector="true" title="Fairy Ascent Cave">
+						<div class="icon-text fa-color up">
+							FA
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="dd-left" data-connector="true" title="Death Mountain Decent">
+						<div class="icon-text dd-color left">
+							DD
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="dd-right" data-connector="true" title="Death Mountain Decent">
+						<div class="icon-text dd-color right">
+							DD
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="bumper-up" data-connector="true" title="Bumper Cave">
+						<div class="icon-image bumper up">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="bumper-down" data-connector="true" title="Bumper Cave">
+						<div class="icon-image bumper down">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="spectacle-up" data-connector="true" title="Spectacle Rock Cave Top">
+						<div class="icon-text sr-color up">
+							SR
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="spectacle-mid" data-connector="true" title="Spectacle Rock Cave Middle (Exit Only)">
+						<div class="icon-text sr-color mid">
+							SR
+							<div class="icon-arrow">^</div>
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="spectacle-down" data-connector="true" title="Spectacle Rock Cave Bottom (Logical Item Access)">
+						<div class="icon-text sr-color down">
+							SR
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="sb-up" data-connector="true" title="Super Bunny Top">
+						<div class="icon-image bunny up">
+							<div class="icon-arrow">^</div>
+						</div>
+						<div class="wide-icon-item icon-count">
+							2
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="sb-down" data-connector="true" title="Super Bunny Bot">
+						<div class="icon-image bunny down">
+							<div class="icon-arrow">^</div>
+						</div>
+						<div class="wide-icon-item icon-count">
+							2
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="spiral-up" data-connector="true" title="Spiral Cave Top">
+						<div class="icon-image spiral up">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="spiral-down" data-connector="true" title="Spiral Cave Bot">
+						<div class="icon-image spiral down">
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="moldorm" title="Mini Moldorm Cave">
+						<div class="icon-image moldorm">
+							<div class="icon-count">
+								5
+							</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="hype" title="Hype Cave">
+						<div class="icon-image hype">
+							<div class="wide-icon-item icon-count">
+								5
+							</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="blind" title="Blind's Hut">
+						<div class="icon-image blind">
+							<div class="icon-count">
+								5
+							</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="floodgate" title="Dam">
+						<div class="icon-image floodgate">
+							<div class="icon-count">
+								1
+							</div>
+						</div>
+					</div>
+					<div class="icon new-icons-only" data-key="sanc" title="Sanctuary">
+						<div class="icon-image sanc">
+							<div class="icon-count">
+								3
+							</div>
+						</div>
+					</div>
+					<div class="icon" data-key="chest1" data-amount="unlimited">
+						<div class="icon-image chest1">
+							<div class="icon-count">1</div>
+						</div>
+					</div>
+					<div class="icon" data-key="chest2" data-amount="unlimited">
+						<div class="icon-image chest2">
+							<div class="icon-count">2</div>
+						</div>
+					</div>
+					<div class="icon" data-key="chest5" data-amount="unlimited">
+						<div class="icon-image chest5">
+							<div class="icon-count">5</div>
+						</div>
+					</div>
+					<div class="icon no-menu" data-key="skullpot">
+						<div class="icon-image skullpot"></div>
+					</div>
+					<div class="icon no-menu" data-key="bumper">
+						<div class="icon-image bumper"></div>
+					</div>
+					<div class="icon no-menu" data-key="beetle">
+						<div class="icon-image beetle"></div>
+					</div>
+					<div class="icon no-menu" data-key="upgrade" title="Upgrade Fairy">
+						<div class="icon-image upgrade"></div>
+					</div>
+					<div class="icon" data-key="redcrystal" data-amount="unlimited">
+						<div class="icon-image redcrystal"></div>
+					</div>
+					<div class="icon" data-key="bluecrystal" data-amount="unlimited">
+						<div class="icon-image bluecrystal"></div>
+					</div>
+					<div class="icon" data-key="crappendant" data-amount="unlimited">
+						<div class="icon-image crappendant"></div>
+					</div>
+					<div class="icon" data-key="greenpendant">
+						<div class="icon-image greenpendant"></div>
+					</div>
+					<div class="icon no-menu" data-key="shitwoods">
+						<div class="icon-text shitwoods-color">
+							X
+						</div>
+					</div>
+					<div class="icon no-menu" data-key="sw-left">
+						<div class="icon-text sw-color left">
+							SW
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon no-menu" data-key="sw-right">
+						<div class="icon-text sw-color right">
+							SW
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon no-menu" data-key="sw-up">
+						<div class="icon-text sw-color up">
+							SW
+							<div class="icon-arrow">^</div>
+						</div>
+					</div>
+					<div class="icon no-menu" data-key="graveyard" title="Graveyard Ledge">
+						<div class="icon-image graveyard">
+							<div class="wide-icon-item icon-count">
+								1
+							</div>
+						</div>
+					</div>
+					<div class="icon no-menu" data-key="bombchest" title="Requires a bomb">
+						<div class="icon-image bombchest">
+							<div class="icon-count">
+								1
+							</div>
+						</div>
+					</div>
+					<div class="icon no-menu" data-key="bomb" data-amount="unlimited" title="Sells Bombs">
+						<div class="icon-image bomb"></div>
+					</div>
+					<div class="icon no-menu" data-key="bunnychest" data-amount="unlimited" title="Accessible as bunny">
+						<div class="icon-image bunnychest">
+							<div class="icon-count">
+								1
+							</div>
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="1" data-amount="unlimited">
+						<div class="icon-text number-color">
+							1
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="2" data-amount="unlimited">
+						<div class="icon-text number-color">
+							2
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="3" data-amount="unlimited">
+						<div class="icon-text number-color">
+							3
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="4" data-amount="unlimited">
+						<div class="icon-text number-color">
+							4
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="5" data-amount="unlimited">
+						<div class="icon-text number-color">
+							5
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="6" data-amount="unlimited">
+						<div class="icon-text number-color">
+							6
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="7" data-amount="unlimited">
+						<div class="icon-text number-color">
+							7
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="8" data-amount="unlimited">
+						<div class="icon-text number-color">
+							8
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="9" data-amount="unlimited">
+						<div class="icon-text number-color">
+							9
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="letter-A" data-amount="unlimited">
+						<div class="icon-text number-color">
+							A
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="letter-B" data-amount="unlimited">
+						<div class="icon-text number-color">
+							B
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="letter-C" data-amount="unlimited">
+						<div class="icon-text number-color">
+							C
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="letter-F" data-amount="unlimited">
+						<div class="icon-text number-color">
+							F
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="letter-G" data-amount="unlimited">
+						<div class="icon-text number-color">
+							G
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="letter-J" data-amount="unlimited">
+						<div class="icon-text number-color">
+							J
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="letter-K" data-amount="unlimited">
+						<div class="icon-text number-color">
+							K
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="letter-L" data-amount="unlimited">
+						<div class="icon-text number-color">
+							L
+						</div>
+					</div>
+					<div class="icon og-sephs-only" data-key="letter-Z" data-amount="unlimited">
+						<div class="icon-text number-color">
+							Z
+						</div>
+					</div>
+				</div>
+			</div>
+			
+		</div>
+		<div id="menu-wrap" class="menu-wrap coop-hidden">
+			<button id="menu-button" class="menu-button">&#9776; Menu<span id="menu-dot" class="menu-dot coop-hidden"></span></button>
+			<div id="menu-panel" class="menu-panel coop-hidden">
+				<button id="connector-lines" class="toolbar-button" data-tip-title="Connector lines" data-tip="Draws coloured lines joining the sides of every connector cave in the Connectors box, so you can see which entrances belong to the same cave. Each cave gets its own colour, taken from its marker. Or just hover a connector in the Connectors box to preview only that one. Both maps have to be on screen, so it is off in one-map mode.">Connector lines: off</button>
+				<button id="update-defaults" class="toolbar-button" data-tip-title="Update defaults" data-tip="Saves your current layout (panel positions and sizes, map zoom), the settings you ticked and the map definition as the defaults this tracker starts with. Do it once you have the screen arranged the way you like, so every new race opens exactly like this. Your current race, its marks and the spoiler are not part of it.">Update defaults</button>
+				<button id="export-settings" class="toolbar-button save" data-tip-title="Export settings" data-tip="Downloads those same defaults as a file (z3rTracker-settings.json). Keep it as a backup, move it to another computer, or send it to a co-op partner so their tracker matches yours. Load it back with &quot;Import a settings file&quot; on the settings screen.">Export settings</button>
+				<div class="menu-sep"></div>
+				<div id="coop-live" class="coop-live">Co-op: off</div>
+			</div>
+		</div>
+		<div id="toast" class="toast coop-hidden"></div>
+		<div id="autotrackingstatus">&nbsp;</div>
+	</body>
+</html>

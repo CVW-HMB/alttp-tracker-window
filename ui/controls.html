@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --bg: #1b1d22; --fg: #d6d8dc; --muted: #8a8f98; --line: #2c3038; --accent: #1da674; --warn: #d9822b; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow: hidden; }
+  .bar { display: flex; align-items: center; gap: 4px; height: 100%; padding: 0 5px; box-sizing: border-box; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  input { flex: 1 1 auto; min-width: 60px; height: 20px; background: #111317; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; font: inherit; }
+  input:focus { outline: none; border-color: var(--accent); }
+  button { flex: 0 0 auto; height: 22px; background: #262a31; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 0 7px; font: inherit; cursor: pointer; white-space: nowrap; }
+  button:hover { background: #30353e; }
+  button.on { border-color: var(--accent); color: #7fe0b8; }
+  button.off { border-color: var(--warn); color: #f0b070; }
+  .icon { padding: 0 6px; }
+  .short { display: none; }
+  @media (max-width: 460px) { .long { display: none; } .short { display: inline; } #list, #back { display: none; } }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button class="icon" id="back" title="Back">&#8249;</button>
+  <input id="url" spellcheck="false" placeholder="racetime.gg/alttpr/room-name" title="Paste a race room URL and press Enter">
+  <button id="chat" title="Hide or show race chat (Cmd+Shift+H)"></button>
+  <button id="blur" title="Blur entrant finish times (Cmd+Shift+B). Hover a row to peek."></button>
+  <button class="icon" id="list" title="ALttPR race list">&#9776;</button>
+  <button class="icon" id="reload" title="Reload race room">&#10227;</button>
+  <button class="icon" id="race" title="Show or hide the race room (Cmd+Shift+R)"></button>
+  <button id="seed" title="New seed: update muffins settings (Cmd+U)">Seed…</button>
+  <button class="icon" id="settings" title="Launcher (Cmd+,)">&#9881;</button>
+</div>
+<script>
+  let state = {};
+  const $ = (id) => document.getElementById(id);
+  const short = (u) => (u || '').replace(/^https?:\/\/(www\.)?racetime\.gg\/?/, '');
+  function render() {
+    $('chat').innerHTML = state.hideChat ? '<span class="long">Chat: hidden</span><span class="short">Chat off</span>' : '<span class="long">Chat: shown</span><span class="short">Chat on</span>';
+    $('chat').className = state.hideChat ? 'on' : 'off';
+    $('blur').innerHTML = state.blurTimes ? '<span class="long">Times: blur</span><span class="short">Blur</span>' : '<span class="long">Times: show</span><span class="short">Times</span>';
+    $('blur').className = state.blurTimes ? 'on' : '';
+    $('seed').hidden = state.tracker !== 'muffins';
+    $('race').innerHTML = state.showRace ? '&#9662;' : '&#9652;';
+    if (document.activeElement !== $('url')) $('url').value = short(state.raceUrl);
+  }
+  api.on('state', (s) => { state = s; render(); });
+  api.on('focus-url', () => { $('url').focus(); $('url').select(); });
+  $('url').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { api.send('load-race', $('url').value); $('url').blur(); }
+    if (e.key === 'Escape') { $('url').blur(); render(); }
+  });
+  $('url').addEventListener('focus', () => $('url').select());
+  $('chat').onclick = () => api.send('set-option', 'hideChat', !state.hideChat);
+  $('blur').onclick = () => api.send('set-option', 'blurTimes', !state.blurTimes);
+  $('race').onclick = () => api.send('set-option', 'showRace', !state.showRace);
+  $('back').onclick = () => api.send('race-nav', 'back');
+  $('reload').onclick = () => api.send('race-nav', 'reload');
+  $('list').onclick = () => api.send('race-nav', 'list');
+  $('seed').onclick = () => api.send('update-muffins');
+  $('settings').onclick = () => api.send('open-launcher');
+</script>
+</body>
+</html>
