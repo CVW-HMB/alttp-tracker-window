@@ -1,0 +1,2 @@
+html, body { overflow: hidden !important; background: #000 !important; margin: 0 !important; }
+#root > div > div.flex-col { transform: scale(var(--fit, 1)) !important; transform-origin: 0 0 !important; }

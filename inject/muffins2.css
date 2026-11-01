@@ -1,0 +1,10 @@
+html, body { overflow: hidden !important; background: #000 !important; margin: 0 !important; }
+#root > div > div.flex-col { transform: none !important; }
+#root > div > div.flex-col > div.flex-row > div:nth-child(1) { transform: scale(var(--it-scale, 1)); transform-origin: 0 0; }
+#root > div > div.flex-col > div.flex-row > div:nth-child(2) {
+  position: absolute !important;
+  left: var(--map-left, 0px) !important;
+  top: var(--map-top, 448px) !important;
+  transform: scale(var(--map-scale, 1));
+  transform-origin: 0 0;
+}

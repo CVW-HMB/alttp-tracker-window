@@ -6,7 +6,7 @@
 <style>
   :root {
     --bg: #15171b; --card: #1d2025; --line: #2c3038; --fg: #e3e5e8; --muted: #8f949c;
-    --accent: #1da674; --accent-fg: #7fe0b8; --warn: #f0b070; --chip: #262a31;
+    --accent: #1da674; --accent-fg: #7fe0b8; --chip: #262a31;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -20,8 +20,6 @@
   .seg button.on { background: var(--chip); color: var(--fg); box-shadow: inset 0 0 0 1px var(--accent); }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { background: var(--chip); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; font-size: 12px; }
-  .chip.good { border-color: #1d6e50; color: var(--accent-fg); }
-  .chip.warn { border-color: #6e4a1d; color: var(--warn); }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .note { color: var(--muted); font-size: 12px; }
   button.btn { background: #262a31; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; }
@@ -56,7 +54,11 @@
     <div class="head">
       <h2>Muffins tracker</h2>
     </div>
-    <div class="chips" id="muffinsChips"></div>
+    <div class="seg" id="muffinsSite">
+      <button data-site="classic">Classic</button>
+      <button data-site="v2">2.0</button>
+    </div>
+    <div class="chips" id="flags"></div>
     <div class="row">
       <button class="btn primary-soft" id="muffinsChange" title="Cmd+U from the main window">New seed settings…</button>
     </div>
@@ -67,20 +69,11 @@
     </details>
   </section>
 
-  <section id="z3rCard">
-    <div class="head">
-      <h2>xkeys panels</h2>
-      <span class="sub2" id="z3rSub">z3rTracker by GGW</span>
-    </div>
-    <div class="chips" id="z3rChips"></div>
-  </section>
-
   <section id="timerCard">
     <div class="head">
       <h2>Stats tracker</h2>
       <span class="sub2">Stonks timer</span>
     </div>
-    <div class="chips" id="timerChips"></div>
     <div class="row">
       <button class="btn" id="timerChange">Change stats…</button>
     </div>
@@ -111,47 +104,12 @@
   const $ = (id) => document.getElementById(id);
   let state = null;
 
-  const WORLD = { S: 'Standard', O: 'Open', I: 'Inverted', R: 'Retro' };
-  const MAPS = { M: 'Maps beside items', V: 'Maps stacked', C: 'Compact maps', N: 'No maps' };
-  const WIDGETS = { checkCount: 'Checks', chestTurns: 'Chest turns', screens: 'Screens', bonks: 'Bonks', deaths: 'Deaths', rupees: 'Rupees', damage: 'Damage', magic: 'Magic' };
-
-  function chip(text, cls = '') { const s = document.createElement('span'); s.className = 'chip ' + cls; s.textContent = text; return s; }
-  function fill(el, chips) { el.replaceChildren(...chips); }
-  function params(u) { try { return new URL(u).searchParams; } catch { return new URLSearchParams(); } }
-
-  function muffinsChips(url) {
-    const p = params(url);
-    const f = p.get('f') || '', d = p.get('d') || '', a = p.get('a') || '';
-    const out = [];
-    if (f[0]) out.push(chip(WORLD[f[0]] || 'World ' + f[0]));
-    if (f[1] && f[1] !== 'N') out.push(chip('Entrance shuffle'));
-    if (f[2] && f[2] !== 'N') out.push(chip('Door shuffle'));
-    if (d[0]) out.push(chip(MAPS[d[0]] || 'Map ' + d[0]));
-    if (d[3] === 'Y') out.push(chip('Sphere tracker'));
-    out.push(a[0] === 'Y' ? chip('Autotracking on, port ' + (a.match(/^Y(\d+)/) || [])[1], 'good') : chip('Autotracking off', 'warn'));
-    if (p.get('p')) out.push(chip('Sprite: ' + p.get('p')));
-    const pref = { grid: 'Grid layout', auto: 'L or stacked layout', L: 'L layout', stack: 'Stacked layout' }[state.layoutPref] || 'Grid layout';
-    out.push(state.muffinsSplit ? chip(pref, 'good') : chip('Column layout'));
-    return out;
-  }
-
-  function timerChips(url) {
-    const p = params(url);
-    const on = Object.keys(WIDGETS).filter((k) => p.get(k) === 'true').map((k) => chip(WIDGETS[k]));
-    return on.length ? on : [chip('Timer only')];
-  }
-
   function render(s) {
     state = { ...(state || {}), ...s };
     const st = state;
-    fill($('z3rChips'), [
-      st.xkeys ? chip('On: entrance shuffle', 'good') : chip('Off: no entrance shuffle'),
-      ...(st.xkeysSetup ? [chip('Setup: ' + st.xkeysSetup)] : []),
-    ]);
     $('showRace').checked = st.showRace;
-    fill($('muffinsChips'), muffinsChips(st.urls.tracker));
-    fill($('timerChips'), timerChips(st.urls.timer));
-    $('z3rSub').textContent = 'z3rTracker by GGW' + (st.z3rVersion ? ' · ' + st.z3rVersion : '');
+    $('flags').replaceChildren(...st.flags.map((t) => Object.assign(document.createElement('span'), { className: 'chip', textContent: t })));
+    document.querySelectorAll('#muffinsSite button').forEach((b) => b.classList.toggle('on', b.dataset.site === st.muffinsSite));
     if (document.activeElement !== $('trackerUrl')) $('trackerUrl').value = st.urls.tracker;
     if (document.activeElement !== $('timerUrl')) $('timerUrl').value = st.urls.timer;
     if (document.activeElement !== $('raceUrl')) $('raceUrl').value = st.urls.race;
@@ -168,6 +126,7 @@
 
   $('showRace').onchange = () => api.send('set-option', 'showRace', $('showRace').checked);
   $('muffinsChange').onclick = () => api.send('open-site-launcher', 'muffins');
+  document.querySelectorAll('#muffinsSite button').forEach((b) => b.onclick = () => api.send('set-option', 'muffinsSite', b.dataset.site));
   $('timerChange').onclick = () => api.send('open-site-launcher', 'timer');
   document.querySelectorAll('[data-save]').forEach((b) => b.onclick = () => api.send('set-url', b.dataset.save, $(b.dataset.save + 'Url').value));
   document.querySelectorAll('[data-reset]').forEach((b) => b.onclick = () => api.send('set-url', b.dataset.reset, state.defaults[b.dataset.reset]));

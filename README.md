@@ -11,13 +11,13 @@ Grab the latest build from [Releases](https://github.com/CVW-HMB/alttp-tracker-w
 
 The builds are not code-signed. Windows SmartScreen shows "Windows protected your PC": click **More info**, then **Run anyway**. On macOS, right-click the app and choose **Open** the first time.
 
-Autotracking needs [SNI](https://github.com/alttpo/sni) (or QUsb2snes) running, same as in a browser.
+Autotracking needs [SNI](https://github.com/alttpo/sni) (or QUsb2snes) running, same as in a browser. Classic muffins, Stonks and z3rTracker use port 23074; muffins 2.0 uses SNI's port 8190.
 
 ## Using it
 
 The launcher opens first:
 
-- **Muffins tracker**: **New seed settings…** opens the muffins launcher. Press its Launch Tracker button and the settings come back to the app. Cmd/Ctrl+U does this from the main window.
+- **Muffins tracker**: **New seed settings…** opens the muffins launcher, Classic or 2.0. Press its Launch Tracker button and the settings come back to the app. Cmd/Ctrl+U does this from the main window.
 - **xkeys panels**: GGW's z3rTracker panels appear when the muffins settings have entrance shuffle on. Its settings screen has a setup picker; the most recently used setup loads by default. OK Dude and Menu > Save setup save into it. If its Show maps option is on, its maps replace the muffins maps.
 - **Stats tracker**: **Change stats…** opens the Stonks launcher the same way.
 - **Racetime**: show or hide the race room, and set the room link. The bar above the race room hides chat and blurs finish times.
@@ -35,12 +35,12 @@ Drag the dividers to resize; double-click one to reset it. View > Layout has two
 - The app sends nothing anywhere. It has no analytics, telemetry or update checks.
 - The trackers and racetime.gg load from their own sites, exactly as in a browser.
 - Logins (racetime.gg) stay signed in through the site's normal session cookie in the app's own profile. The app never sees or stores passwords, and on Windows the cookie store is encrypted by the OS.
-- Pages get no camera, microphone, location or notification access. Links to other sites open in your default browser.
+- Pages get no camera, microphone, location or notification access. The trackers may reach your local network, for SNI and emulators; the race room may not. Links to other sites open in your default browser.
 - Settings and xkeys setups are plain JSON in the app's data folder (`%APPDATA%\ALttP Tracker` on Windows, `~/Library/Application Support/ALttP Tracker` on macOS).
 
 ## Credits
 
-- [Muffins tracker](https://alttprtracker.mfns.dev/) by muffins and contributors.
+- [Muffins tracker](https://alttprtracker.mfns.dev/) and [2.0](https://volatile.alttprtracker.mfns.dev/) ([source](https://github.com/KrisDavie/alttptracker)) by muffins and contributors.
 - [Stonks Tracker](https://thettracker.vercel.app/) by StructuralMike.
 - [z3rTracker](https://github.com/okay-dude/z3rTracker) by GGW, fearagent, dunka and bonta; bundled in `vendor/z3rTracker`.
 - [racetime.gg](https://racetime.gg/).

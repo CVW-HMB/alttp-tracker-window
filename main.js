@@ -11,6 +11,7 @@ const DEFAULT_URLS = {
 
 const SITES = {
   muffins: { launcher: 'https://alttprtracker.mfns.dev/', host: 'alttprtracker.mfns.dev' },
+  muffins2: { launcher: 'https://volatile.alttprtracker.mfns.dev/', host: 'volatile.alttprtracker.mfns.dev' },
   timer: { launcher: 'https://thettracker.vercel.app/', host: 'thettracker.vercel.app' },
 };
 
@@ -28,6 +29,8 @@ const DEFAULTS = {
   colFrac: 0.32,          // column: share of width for the right column
   stackFrac: null,        // stack: share of width for items+maps; null = as large as fits
   showRace: true,
+  muffinsSite: 'classic', // which muffins launcher "New seed settings" opens: 'classic' | 'v2'
+  muffins2: null,         // muffins 2.0 keeps its settings in the page, so the app keeps a summary
   hideChat: true,
   blurTimes: false,
   fitTimer: true,
@@ -36,11 +39,11 @@ const DEFAULTS = {
   configVersion: 4,
 };
 
-// Muffins tracker block sizes at 100% scale, in CSS px.
+// Muffins tracker block sizes at 100% scale, in CSS px. 2.0 has no padding left of its maps.
 const ITEMS = 448;
-const MAP_PAD = 8;
-const MAP_W = 892 - MAP_PAD;
 const MAP_H = 448;
+const mapPad = () => (muffinsV2() ? 0 : 8);
+const mapW0 = () => (muffinsV2() ? 896 : 884);
 const DIV = 5;
 const BAR = 30;
 const MIN_TOP = 150;
@@ -54,7 +57,6 @@ const isTest = !app.isPackaged && !!process.env.SHOT_DIR;
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
 const setupsPath = () => path.join(app.getPath('userData'), 'xkeys-setups.json');
 const Z3R_DIR = path.join(__dirname, 'vendor', 'z3rTracker');
-const Z3R_VERSION = (() => { try { return fs.readFileSync(path.join(Z3R_DIR, 'VERSION'), 'utf8').trim(); } catch { return ''; } })();
 const Z3R_URL = pathToFileURL(path.join(Z3R_DIR, 'index.html')).href + '?load';
 
 let cfg;
@@ -90,6 +92,8 @@ const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 const CSS = {
   muffinsL: read('inject/muffins.css'),
   muffinsFit: read('inject/muffins-fit.css'),
+  muffins2L: read('inject/muffins2.css'),
+  muffins2Fit: read('inject/muffins2-fit.css'),
   timer: read('inject/timer.css'),
   race: read('inject/race.css'),
   raceHideChat: read('inject/race-hide-chat.css'),
@@ -98,6 +102,7 @@ const CSS = {
 };
 const TIMER_FIT_JS = read('inject/timer-fit.js');
 const MUFFINS_FIT_JS = read('inject/muffins-fit.js');
+const MUFFINS2_STATE_JS = read('inject/muffins2-state.js');
 const Z3R_SETUPS_JS = read('inject/z3r-setups.js');
 
 // ---------- xkeys setups (stored by the app, not the tracker) ----------
@@ -117,12 +122,87 @@ function listSetups() {
 
 function hostOf(u) { try { return new URL(u).host; } catch { return ''; } }
 
+const muffinsV2 = () => hostOf(cfg.urls.tracker) === SITES.muffins2.host;
+const muffins2Id = () => { try { return new URL(cfg.urls.tracker).searchParams.get('id') || ''; } catch { return ''; } };
+
+function summarizeMuffins2(s) {
+  if (!s || typeof s !== 'object') return {};
+  const str = (v) => (typeof v === 'string' ? v.slice(0, 40) : undefined);
+  return {
+    mapMode: str(s.mapMode),
+    world: str(s.worldState),
+    entrance: !!str(s.entranceMode) && s.entranceMode !== 'none',
+    doors: !!str(s.doors) && s.doors !== 'vanilla',
+    overworld: (!!str(s.owLayout) && s.owLayout !== 'vanilla') || (!!str(s.owCrossed) && s.owCrossed !== 'none') || s.owMixed === true,
+    flags: muffins2Flags(s),
+  };
+}
+
+// Seed settings that differ from the defaults, for the launcher. World state is always listed.
+const cap = (v) => v.charAt(0).toUpperCase() + v.slice(1).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase();
+
+function wildItems(maps, compasses, small, big) {
+  if (maps && compasses && small && big) return 'Keysanity';
+  const parts = [maps && 'maps', compasses && 'compasses', small && 'small keys', big && 'big keys'].filter(Boolean);
+  return parts.length ? 'Wild ' + parts.join(', ') : '';
+}
+
+function enemyLine(enemizer, boss) {
+  const b = boss ? 'boss shuffle' + (boss === true ? '' : ` (${boss})`) : '';
+  if (enemizer) return b ? 'Enemizer + ' + b : 'Enemizer';
+  return b ? cap(b) : '';
+}
+
+const crystals = (gt, ganon) => (gt === '7' && ganon === '7' ? '' : `Crystals ${gt}/${ganon}`);
+
+function muffins2Flags(s) {
+  const v = (k) => (typeof s[k] === 'string' ? s[k].slice(0, 30) : '');
+  const set = (k, off) => !!v(k) && v(k) !== off;
+  const ad = v('ganonVulnerable') === 'ad';
+  const goal = ad ? 'All dungeons' : set('goal', 'ganon') ? cap(v('goal')) : '';
+  const other = Object.entries({ shopsanity: 'Shopsanity', activatedFlute: 'Flute active', bonkShuffle: 'Bonk shuffle', ambrosia: 'Ambrosia', followerShuffle: 'Follower shuffle', tavernShuffle: 'Tavern shuffle' })
+    .filter(([k]) => s[k] === true).map(([, label]) => label);
+  return [
+    v('worldState') && cap(v('worldState')),
+    set('entranceMode', 'none') && 'Entrance',
+    [v('wildSmallKeys') === 'universal' && 'Universal keys', wildItems(s.wildMaps === true, s.wildCompasses === true, v('wildSmallKeys') === 'wild', s.wildBigKeys === true)].filter(Boolean).join(', '),
+    enemyLine(set('enemyShuffle', 'none'), set('bossShuffle', 'none') && v('bossShuffle')),
+    goal,
+    crystals(v('gtOpen') || '7', ad ? '7' : v('ganonVulnerable') || '7'),
+    other.join(' · '),
+  ].filter(Boolean);
+}
+
+const F_WORLD = { O: 'Open', S: 'Standard', I: 'Inverted', R: 'Retro' };
+const F_GOAL = { F: 'Fast Ganon', A: 'All dungeons', P: 'Pedestal', T: 'Triforce hunt', H: 'Ganonhunt', O: 'Other goal' };
+const F_OTHER = { 7: ['M', 'Mystery'], 13: ['Y', 'Shopsanity'], 14: ['Y', 'Ambrosia'], 15: ['Y', 'Non-progressive bows'], 16: ['Y', 'Flute active'], 17: ['Y', 'Bonk shuffle'] };
+
+function classicFlags(f) {
+  const n = (letter, digit) => (letter === 'R' ? 'random' : digit || '7');
+  const other = Object.entries(F_OTHER).filter(([i, [on]]) => f[i] === on).map(([, [, label]]) => label);
+  return [
+    F_WORLD[f[0]],
+    f[1] && f[1] !== 'N' && 'Entrance',
+    wildItems(f[9] === '1', f[10] === '1', f[11] === '1', f[12] === '1'),
+    enemyLine(!!f[5] && f[5] !== 'N', !!f[4] && f[4] !== 'N'),
+    F_GOAL[f[18]],
+    crystals(n(f[19], f[20]), n(f[21], f[22])),
+    other.join(' · '),
+  ].filter(Boolean);
+}
+
+function seedFlags() {
+  if (muffinsV2()) return cfg.muffins2?.flags || [];
+  try { return classicFlags(new URL(cfg.urls.tracker).searchParams.get('f') || ''); } catch { return []; }
+}
+
 function muffinsDisplay() {
   try { return new URL(cfg.urls.tracker).searchParams.get('d') || ''; } catch { return ''; }
 }
 
 // The app does its own scaling, so the tracker always loads at its 100% scale.
 function muffinsLoadUrl() {
+  if (muffinsV2()) return cfg.urls.tracker;
   try {
     const u = new URL(cfg.urls.tracker);
     const d = u.searchParams.get('d');
@@ -133,11 +213,15 @@ function muffinsLoadUrl() {
 
 // GGW's panels show only for entrance-shuffle seeds, read from the muffins tracker's own flags.
 function muffinsEntrance() {
+  if (muffinsV2()) return !!cfg.muffins2?.entrance;
   try { const f = new URL(cfg.urls.tracker).searchParams.get('f') || ''; return !!f[1] && f[1] !== 'N'; } catch { return false; }
 }
 const xkeysOn = () => muffinsEntrance();
 
+// 2.0's "normal" map mode is the one with both maps beside the items (3 wide, 1 tall).
+let muffins2Size = null;
 function muffinsSplit() {
+  if (muffinsV2()) return muffins2Size ? muffins2Size.w > 2 * muffins2Size.h : (cfg.muffins2?.mapMode || 'normal') === 'normal';
   const d = muffinsDisplay();
   return d[0] === 'M' && d[3] !== 'Y';
 }
@@ -212,17 +296,37 @@ function pushTrackerLayout() {
       '--it-scale': geo.itemsScale,
       '--map-scale': geo.mapScale,
       '--map-top': geo.mapTop + 'px',
-      '--map-left': (geo.mapX || 0) - MAP_PAD * geo.mapScale + 'px',
+      '--map-left': (geo.mapX || 0) - mapPad() * geo.mapScale + 'px',
     });
+  } else if (muffinsV2()) {
+    const b = views.tracker.getBounds();
+    if (muffins2Size) setVars('tracker', { '--fit': Math.max(0.1, Math.min(b.width / muffins2Size.w, b.height / muffins2Size.h)) });
   } else {
     views.tracker.webContents.executeJavaScript('window.__muffinsFit && window.__muffinsFit()').catch(() => {});
   }
 }
 
+// Muffins 2.0 can change its map mode from inside the tracker, so its shape is polled.
+let muffins2Timer = null;
+async function pollMuffins2() {
+  const wc = views.tracker?.webContents;
+  if (!wc || wc.isDestroyed() || !muffinsV2()) return;
+  const st = await wc.executeJavaScript(`(${MUFFINS2_STATE_JS})(${JSON.stringify(muffins2Id())})`).catch(() => null);
+  if (!st || typeof st !== 'object') return;
+  const w = +st.w, h = +st.h;
+  const sizeChanged = w > 0 && h > 0 && (w !== muffins2Size?.w || h !== muffins2Size?.h);
+  if (sizeChanged) muffins2Size = { w, h };
+  const next = { ...cfg.muffins2, ...summarizeMuffins2(st.s) };
+  const settingsChanged = JSON.stringify(next) !== JSON.stringify(cfg.muffins2);
+  if (settingsChanged) { cfg.muffins2 = next; saveConfig(); sendLauncherState(); }
+  if (layoutMode() !== mode) createMain();
+  else if (sizeChanged || settingsChanged) layout();
+}
+
 // Row 1: items, light world, dark world. Row 2: xkeys panels. Row 3: stats and race room.
 function computeGrid(W, H) {
   const ggw = xkeysOn() ? z3rMaps : 0;          // GGW maps replacing the muffins maps: 0, 1 or 2
-  const k = ggw ? ggw : MAP_W / MAP_H;          // map row width per unit of height
+  const k = ggw ? ggw : mapW0() / MAP_H;      // map row width per unit of height
   let bandH = 0;
   if (xkeysOn()) {
     const aspect = z3rExtent ? z3rExtent.h / z3rExtent.w : GRID_BAND_DEFAULT * H / W;
@@ -238,8 +342,8 @@ function computeGrid(W, H) {
     mapW = mapH * ggw;
     mapScale = 1;
   } else {
-    mapScale = Math.max(0.1, Math.min((W - mapX) / MAP_W, cap / MAP_H));
-    mapW = Math.ceil(MAP_W * mapScale);
+    mapScale = Math.max(0.1, Math.min((W - mapX) / mapW0(), cap / MAP_H));
+    mapW = Math.ceil(mapW0() * mapScale);
     mapH = Math.round(MAP_H * mapScale);
   }
   const itemsSide = Math.min(itemsW, Math.max(mapH, Math.min(itemsW, cap)));
@@ -254,9 +358,9 @@ function computeGrid(W, H) {
 
 function computeL(W, H) {
   const avail = H - DIV;
-  let mapScale = Math.min(W / MAP_W, ((cfg.mapFrac ?? AUTO_MAP_FRAC) * avail) / MAP_H);
+  let mapScale = Math.min(W / mapW0(), ((cfg.mapFrac ?? AUTO_MAP_FRAC) * avail) / MAP_H);
   if (avail - MAP_H * mapScale < MIN_TOP) mapScale = Math.max(0, avail - MIN_TOP) / MAP_H;
-  const mapW = Math.ceil(MAP_W * mapScale);
+  const mapW = Math.ceil(mapW0() * mapScale);
   const topH = Math.round(avail - MAP_H * mapScale);
   let itemsW;
   if (cfg.itemsFrac != null) itemsW = Math.round(cfg.itemsFrac * W);
@@ -267,11 +371,11 @@ function computeL(W, H) {
 
 // Items above maps at the same width, timer and race in a full-height column on the right.
 function computeStack(W, H) {
-  const k = MAP_H / MAP_W;
+  const k = MAP_H / mapW0();
   const fit = Math.floor((H - DIV) / (1 + k));
   let w = cfg.stackFrac != null ? Math.round(cfg.stackFrac * W) : fit;
   w = Math.max(120, Math.min(w, fit, W - 220 - DIV));
-  return { kind: 'stack', W, H, topH: w, itemsW: w, leftW: w, itemsScale: w / ITEMS, mapScale: w / MAP_W, mapW: w, mapX: 0, mapTop: w + DIV, rightW: W - w - DIV };
+  return { kind: 'stack', W, H, topH: w, itemsW: w, leftW: w, itemsScale: w / ITEMS, mapScale: w / mapW0(), mapW: w, mapX: 0, mapTop: w + DIV, rightW: W - w - DIV };
 }
 
 function computeColumn(W, H) {
@@ -536,10 +640,17 @@ function createMain() {
 
   const tw = views.tracker.webContents;
   tw.on('dom-ready', async () => {
-    await setCss('tracker', 'layout', mode === 'split' ? CSS.muffinsL : CSS.muffinsFit, true);
-    if (mode !== 'split') await tw.executeJavaScript(MUFFINS_FIT_JS).catch(() => {});
+    if (muffinsV2()) {
+      await setCss('tracker', 'layout', mode === 'split' ? CSS.muffins2L : CSS.muffins2Fit, true);
+      pollMuffins2();
+    } else {
+      await setCss('tracker', 'layout', mode === 'split' ? CSS.muffinsL : CSS.muffinsFit, true);
+      if (mode !== 'split') await tw.executeJavaScript(MUFFINS_FIT_JS).catch(() => {});
+    }
     pushTrackerLayout();
   });
+  clearInterval(muffins2Timer);
+  muffins2Timer = setInterval(pollMuffins2, 1500);
 
   const tm = views.timer.webContents;
   tm.on('dom-ready', async () => {
@@ -583,6 +694,7 @@ function createMain() {
   win.on('moved', saveBounds);
   win.on('close', () => { saveBounds(); writeConfig(); });
   win.on('closed', () => {
+    clearInterval(muffins2Timer);
     win = null; views = {};
     if (!launcher) app.quit();
   });
@@ -595,6 +707,7 @@ function createMain() {
 function applyLive(kind) {
   if (!win) return;
   if (kind === 'tracker') {
+    muffins2Size = null;
     if (layoutMode() !== mode) createMain();
     else { views.tracker.webContents.loadURL(muffinsLoadUrl()); layout(); }
   }
@@ -610,7 +723,7 @@ const siteWins = {};
 function openLauncher() {
   if (launcher && !launcher.isDestroyed()) { launcher.focus(); return; }
   launcher = new BrowserWindow({
-    width: 620, height: 800, minWidth: 520, minHeight: 520,
+    width: 620, height: 640, minWidth: 520, minHeight: 480,
     title: 'ALttP Tracker Launcher', backgroundColor: '#15171b',
     show: !isTest,
     webPreferences: { preload: path.join(__dirname, 'ui/preload.js'), contextIsolation: true, sandbox: true },
@@ -625,19 +738,14 @@ function openLauncher() {
 }
 
 function launcherState() {
-  const setups = listSetups();
   return {
     urls: cfg.urls,
     defaults: DEFAULT_URLS,
-    xkeys: xkeysOn(),
-    z3rVersion: Z3R_VERSION,
-    xkeysSetup: setups[0]?.name || null,
-    xkeysSetupCount: setups.length,
     showLauncher: cfg.showLauncher,
     showRace: cfg.showRace,
     running: !!win,
-    muffinsSplit: muffinsSplit(),
-    layoutPref: cfg.layout,
+    muffinsSite: cfg.muffinsSite,
+    flags: seedFlags(),
   };
 }
 
@@ -647,24 +755,41 @@ function sendLauncherState(extra = {}) {
 
 // Opens a site's own launcher page and captures the tracker URL it tries to open.
 function openSiteLauncher(kind) {
-  const site = SITES[kind];
+  const site = kind === 'muffins' && cfg.muffinsSite === 'v2' ? SITES.muffins2 : SITES[kind];
   if (!site) return;
-  if (siteWins[kind] && !siteWins[kind].isDestroyed()) { siteWins[kind].focus(); return; }
+  const open = siteWins[kind];
+  if (open && !open.isDestroyed()) {
+    if (open.site === site) { open.focus(); return; }
+    open.close();
+  }
   const w = new BrowserWindow({
     width: kind === 'muffins' ? 1100 : 1000, height: 900, title: kind === 'muffins' ? 'Muffins tracker launcher' : 'Stonks tracker launcher',
     backgroundColor: '#111', parent: launcher || undefined,
     webPreferences: { contextIsolation: true, sandbox: true },
   });
+  w.site = site;
   siteWins[kind] = w;
+  const v2 = site === SITES.muffins2;
   const isTrackerUrl = (url) => {
     try {
       const u = new URL(url, site.launcher);
       if (u.host !== site.host) return false;
+      if (v2) return u.pathname === '/tracker' && !!u.searchParams.get('id');
       return kind === 'muffins' ? u.pathname.endsWith('/tracker.html') : u.searchParams.get('tracker') === 'true';
     } catch { return false; }
   };
-  const capture = (url) => {
+  const capture = async (url) => {
     const full = new URL(url, w.webContents.getURL() || site.launcher).toString();
+    if (v2) {
+      // 2.0 saves the new session in the page's storage; read its settings before the window goes.
+      const id = new URL(full).searchParams.get('id');
+      let st = null;
+      for (let i = 0; i < 10 && !st?.s && !w.isDestroyed(); i++) {
+        st = await w.webContents.executeJavaScript(`(${MUFFINS2_STATE_JS})(${JSON.stringify(id)})`).catch(() => null);
+        if (!st?.s) await new Promise((r) => setTimeout(r, 200));
+      }
+      cfg.muffins2 = summarizeMuffins2(st?.s);
+    }
     if (kind === 'muffins') cfg.urls.tracker = full; else cfg.urls.timer = full;
     saveConfig();
     applyLive(kind === 'muffins' ? 'tracker' : 'timer');
@@ -741,6 +866,7 @@ on('drag-reset', (_e, id) => {
 });
 
 on('set-option', (_e, key, value) => {
+  if (key === 'muffinsSite') { cfg.muffinsSite = value === 'v2' ? 'v2' : 'classic'; saveConfig(); sendLauncherState(); return; }
   if (['hideChat', 'blurTimes', 'showRace', 'fitTimer', 'alwaysOnTop', 'showLauncher'].includes(key)) setOption(key, !!value);
 });
 on('load-race', (_e, u) => loadRace(u));
@@ -841,7 +967,7 @@ async function launcherShot(dir) {
     for (const kind of process.env.SHOT_SITE.split(',')) {
       openSiteLauncher(kind);
       await new Promise((r) => setTimeout(r, 6000));
-      const js = kind === 'muffins' ? 'launch_tracker()' : "document.querySelector('button[type=submit]').click()";
+      const js = process.env.SHOT_SITE_JS || (kind === 'muffins' ? 'launch_tracker()' : "document.querySelector('button[type=submit]').click()");
       await siteWins[kind].webContents.executeJavaScript(js, true).catch((e) => console.log('site js error', e));
       await new Promise((r) => setTimeout(r, 1500));
     }
@@ -858,10 +984,14 @@ app.setName('ALttP Tracker');
 if (isTest) app.setPath('userData', path.join(process.env.SHOT_DIR, '..', process.env.SHOT_PROFILE || 'profile-' + path.basename(process.env.SHOT_DIR)));
 
 // No camera, mic, location, notifications etc. for any page; no <webview>; no non-web navigation.
+// Trackers may reach localhost/LAN for SNI, QUsb2Snes and emulator bridges; the race room may not.
 const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'fullscreen']);
+const LOCAL_NETWORK = new Set(['local-network-access', 'local-network', 'loopback-network']);
+const permitted = (permission, origin) =>
+  ALLOWED_PERMISSIONS.has(permission) || (LOCAL_NETWORK.has(permission) && hostOf(origin) !== 'racetime.gg');
 function lockDownSession(ses) {
-  ses.setPermissionRequestHandler((_wc, permission, cb) => cb(ALLOWED_PERMISSIONS.has(permission)));
-  ses.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
+  ses.setPermissionRequestHandler((_wc, permission, cb, details) => cb(permitted(permission, details?.requestingUrl)));
+  ses.setPermissionCheckHandler((_wc, permission, origin) => permitted(permission, origin));
 }
 app.on('session-created', lockDownSession);
 app.on('web-contents-created', (_e, wc) => {
