@@ -50,6 +50,11 @@
 <main>
   <h1>ALttP Tracker</h1>
 
+  <div class="seg" id="windowLayout">
+    <button data-layout="wide">Wide</button>
+    <button data-layout="vertical">Vertical</button>
+  </div>
+
   <section id="muffinsCard">
     <div class="head">
       <h2>Muffins tracker</h2>
@@ -109,6 +114,7 @@
     const st = state;
     $('showRace').checked = st.showRace;
     $('flags').replaceChildren(...st.flags.map((t) => Object.assign(document.createElement('span'), { className: 'chip', textContent: t })));
+    document.querySelectorAll('#windowLayout button').forEach((b) => b.classList.toggle('on', b.dataset.layout === st.windowLayout));
     document.querySelectorAll('#muffinsSite button').forEach((b) => b.classList.toggle('on', b.dataset.site === st.muffinsSite));
     if (document.activeElement !== $('trackerUrl')) $('trackerUrl').value = st.urls.tracker;
     if (document.activeElement !== $('timerUrl')) $('timerUrl').value = st.urls.timer;
@@ -126,6 +132,7 @@
 
   $('showRace').onchange = () => api.send('set-option', 'showRace', $('showRace').checked);
   $('muffinsChange').onclick = () => api.send('open-site-launcher', 'muffins');
+  document.querySelectorAll('#windowLayout button').forEach((b) => b.onclick = () => api.send('set-option', 'windowLayout', b.dataset.layout));
   document.querySelectorAll('#muffinsSite button').forEach((b) => b.onclick = () => api.send('set-option', 'muffinsSite', b.dataset.site));
   $('timerChange').onclick = () => api.send('open-site-launcher', 'timer');
   document.querySelectorAll('[data-save]').forEach((b) => b.onclick = () => api.send('set-url', b.dataset.save, $(b.dataset.save + 'Url').value));

@@ -39,3 +39,12 @@ html.app-ggw-maps .map-container > .zoom-in,
 html.app-ggw-maps .map-container > .zoom-out,
 html.app-ggw-maps .map-container > .drag-map { display: none !important; }
 html.app-ggw-maps .menu-wrap { top: auto !important; bottom: 24px !important; }
+
+/* Vertical layout: panels flow in the app's right column instead of the saved positions. */
+html.app-vertical #tracker { width: var(--flow-w, 520px); padding: 2px 64px 2px 2px; box-sizing: border-box; }
+html.app-vertical .location-container {
+  position: relative !important; left: auto !important; top: auto !important; height: auto !important;
+  display: inline-flex; vertical-align: top; max-width: 100%; margin: 0 3px 3px 0 !important;
+}
+html.app-vertical .map-container, html.app-vertical #one-map { display: none !important; }
+html.app-vertical .resizer { display: none !important; }

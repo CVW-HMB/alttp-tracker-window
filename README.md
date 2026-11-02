@@ -22,13 +22,15 @@ The launcher opens first:
 - **Stats tracker**: **Change stats…** opens the Stonks launcher the same way.
 - **Racetime**: show or hide the race room, and set the room link. The bar above the race room hides chat and blurs finish times.
 
-Default layout, with muffins maps set beside the items:
+**Wide** layout, with muffins maps set beside the items:
 
 - Row 1: items, light world map, dark world map.
 - Row 2: xkeys panels (entrance seeds only).
 - Row 3: stats tracker and race room.
 
 Drag the dividers to resize; double-click one to reset it. View > Layout has two other arrangements.
+
+**Vertical** layout, for smaller screens: items over the light and dark world maps on the left, sized to the window height; xkeys panels, stats tracker and race room on the right. The muffins tracker is switched to stacked maps for it (for 2.0, the session's own map mode comes back in Wide). GGW's maps are not shown in Vertical.
 
 ## Privacy
 

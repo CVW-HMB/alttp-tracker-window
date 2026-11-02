@@ -1,3 +1,6 @@
 html, body { overflow: hidden !important; background: #000 !important; margin: 0 !important; }
-body { zoom: var(--fit, 1); }
+body {
+  width: var(--nat-w, 100vw) !important; height: var(--nat-h, 100vh) !important;
+  transform: scale(var(--fit, 1)) !important; transform-origin: 0 0 !important;
+}
 #app { overflow: visible !important; }

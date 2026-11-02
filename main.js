@@ -19,6 +19,9 @@ const DEFAULTS = {
   urls: { ...DEFAULT_URLS },
   showLauncher: true,
   bounds: { width: 1500, height: 920 },
+  windowLayout: 'wide',   // 'wide' | 'vertical': items over stacked maps, everything else in a column on the right
+  verticalBounds: { width: 750, height: 960 },
+  verticalSplit: 0.3,     // vertical: share of the right box below the xkeys panels given to the timer
   layout: 'grid',         // muffins with maps beside items: 'grid' | 'L' | 'stack' | 'auto'
   gridItemsFrac: null,    // grid: share of width for the items box; null = same height as the maps
   gridMapFrac: null,      // grid: cap on row 1 height as a share of the window; null = fill the width
@@ -31,6 +34,7 @@ const DEFAULTS = {
   showRace: true,
   muffinsSite: 'classic', // which muffins launcher "New seed settings" opens: 'classic' | 'v2'
   muffins2: null,         // muffins 2.0 keeps its settings in the page, so the app keeps a summary
+  muffins2Restore: null,  // { id, mapMode }: map mode a 2.0 session had before vertical switched it to stacked
   hideChat: true,
   blurTimes: false,
   fitTimer: true,
@@ -52,6 +56,7 @@ const STACK_ASPECT = 1.35;
 const GRID_MIN_ROW3 = 150;
 const GRID_BAND_DEFAULT = 0.3;
 const GGW_MAP = 603;
+const Z3R_FLOW_W = 520;   // vertical: width the xkeys panels are laid out in before zooming to the column
 
 const isTest = !app.isPackaged && !!process.env.SHOT_DIR;
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
@@ -103,6 +108,7 @@ const CSS = {
 const TIMER_FIT_JS = read('inject/timer-fit.js');
 const MUFFINS_FIT_JS = read('inject/muffins-fit.js');
 const MUFFINS2_STATE_JS = read('inject/muffins2-state.js');
+const MUFFINS2_MAPMODE_JS = read('inject/muffins2-mapmode.js');
 const Z3R_SETUPS_JS = read('inject/z3r-setups.js');
 
 // ---------- xkeys setups (stored by the app, not the tracker) ----------
@@ -196,6 +202,16 @@ function seedFlags() {
   try { return classicFlags(new URL(cfg.urls.tracker).searchParams.get('f') || ''); } catch { return []; }
 }
 
+// Classic tracker size at 100% scale for its map mode, as its launcher sizes the window.
+function classicSize(d) {
+  const sphere = d[3] === 'Y';
+  if (d[0] === 'V') return { w: sphere ? 892 : 448, h: 1330 };
+  if (d[0] === 'C') return { w: 448, h: sphere ? 988 : 692 };
+  return { w: d[0] === 'M' ? 1340 : 448, h: sphere ? 744 : 448 };
+}
+
+const vertical = () => cfg.windowLayout === 'vertical';
+
 function muffinsDisplay() {
   try { return new URL(cfg.urls.tracker).searchParams.get('d') || ''; } catch { return ''; }
 }
@@ -206,7 +222,7 @@ function muffinsLoadUrl() {
   try {
     const u = new URL(cfg.urls.tracker);
     const d = u.searchParams.get('d');
-    if (d && d.length >= 6) u.searchParams.set('d', d.slice(0, 5) + 'F' + d.slice(6));
+    if (d && d.length >= 6) u.searchParams.set('d', (vertical() ? 'V' : d[0]) + d.slice(1, 5) + 'F' + d.slice(6));
     return u.toString();
   } catch { return cfg.urls.tracker; }
 }
@@ -227,6 +243,7 @@ function muffinsSplit() {
 }
 
 function layoutMode() {
+  if (vertical()) return 'vertical';
   return muffinsSplit() ? 'split' : 'column';
 }
 
@@ -307,12 +324,24 @@ function pushTrackerLayout() {
 }
 
 // Muffins 2.0 can change its map mode from inside the tracker, so its shape is polled.
+// Vertical needs a 2.0 session's maps stacked; the wide layout gets the session's own map mode back.
+function syncMuffins2MapMode(wc, id, current) {
+  if (!current) return;
+  const restore = cfg.muffins2Restore?.id === id ? cfg.muffins2Restore.mapMode : null;
+  const want = vertical() ? 'vertical' : restore;
+  if (!vertical() && restore) { cfg.muffins2Restore = null; saveConfig(); }
+  if (!want || want === current) return;
+  if (vertical() && !restore) { cfg.muffins2Restore = { id, mapMode: current }; saveConfig(); }
+  wc.executeJavaScript(`(${MUFFINS2_MAPMODE_JS})(${JSON.stringify(id)}, ${JSON.stringify(want)})`).catch(() => {});
+}
+
 let muffins2Timer = null;
 async function pollMuffins2() {
   const wc = views.tracker?.webContents;
   if (!wc || wc.isDestroyed() || !muffinsV2()) return;
   const st = await wc.executeJavaScript(`(${MUFFINS2_STATE_JS})(${JSON.stringify(muffins2Id())})`).catch(() => null);
   if (!st || typeof st !== 'object') return;
+  syncMuffins2MapMode(wc, muffins2Id(), typeof st.s?.mapMode === 'string' ? st.s.mapMode : null);
   const w = +st.w, h = +st.h;
   const sizeChanged = w > 0 && h > 0 && (w !== muffins2Size?.w || h !== muffins2Size?.h);
   if (sizeChanged) muffins2Size = { w, h };
@@ -383,7 +412,21 @@ function computeColumn(W, H) {
   return { kind: 'column', W, H, rightW, trackerW: W - rightW - DIV };
 }
 
+// Tracker on the left at its own aspect so it fills the height; xkeys panels, timer and race on the right.
+function computeVertical(W, H) {
+  const nat = muffinsV2() ? muffins2Size || { w: 448, h: 1344 } : classicSize('V' + muffinsDisplay().slice(1));
+  const leftW = Math.max(150, Math.min(Math.round((H * nat.w) / nat.h), W - 260 - DIV));
+  const rightX = leftW + DIV, rightW = W - rightX;
+  let bandH = 0, z3rZoom = 1;
+  if (xkeysOn()) {
+    z3rZoom = Math.round(Math.max(0.5, Math.min(1.2, rightW / Z3R_FLOW_W)) * 100) / 100;
+    bandH = Math.round(Math.min(z3rExtent ? z3rExtent.h * z3rZoom : 0.28 * H, 0.55 * H));
+  }
+  return { kind: 'vertical', W, H, leftW, rightX, rightW, bandH, z3rZoom };
+}
+
 function pickGeometry(W, H) {
+  if (mode === 'vertical') return computeVertical(W, H);
   if (mode !== 'split') return computeColumn(W, H);
   let want = cfg.layout;
   if (want === 'auto') want = W / H > STACK_ASPECT ? 'stack' : 'L';
@@ -393,11 +436,11 @@ function pickGeometry(W, H) {
 }
 
 // Lays out timer, controls and race inside a box on the right.
-function layoutRightBox(x, y, w, h) {
+function layoutRightBox(x, y, w, h, split = cfg.rightSplit) {
   views.rightDivider.setVisible(cfg.showRace);
   views.race.setVisible(cfg.showRace);
   if (cfg.showRace) {
-    const timerH = Math.max(40, Math.round((h - DIV - BAR) * cfg.rightSplit));
+    const timerH = Math.max(40, Math.round((h - DIV - BAR) * split));
     views.timer.setBounds({ x, y, width: w, height: timerH });
     views.rightDivider.setBounds({ x, y: y + timerH, width: w, height: DIV });
     views.controls.setBounds({ x, y: y + timerH + DIV, width: w, height: BAR });
@@ -411,7 +454,16 @@ function layoutRightBox(x, y, w, h) {
 // Zooms the xkeys pane so its panels fit the band, and places GGW maps in row 1 when they are on.
 function fitZ3r() {
   const v = views.z3r;
-  if (!v || !z3rExtent || !v.getVisible() || !geo || geo.kind !== 'grid') return;
+  if (!v || !v.getVisible() || !geo) return;
+  const wc0 = v.webContents;
+  if (geo.kind === 'vertical') {
+    wc0.setZoomFactor(geo.z3rZoom);
+    const flow = (geo.rightW / geo.z3rZoom).toFixed(2) + 'px';
+    wc0.executeJavaScript(`(() => { const r = document.documentElement; r.style.setProperty('--flow-w', '${flow}'); r.classList.remove('app-ggw-maps'); r.classList.add('app-vertical'); dispatchEvent(new Event('resize')); })()`).catch(() => {});
+    return;
+  }
+  wc0.executeJavaScript(`document.documentElement.classList.remove('app-vertical')`).catch(() => {});
+  if (!z3rExtent || geo.kind !== 'grid') return;
   const W = geo.W, bandH = geo.bandH;
   if (!W || !bandH) return;
   const f = Math.round(Math.max(0.3, Math.min(1.6, W / z3rExtent.w, bandH / z3rExtent.h)) * 100) / 100;
@@ -426,7 +478,7 @@ function fitZ3r() {
       '--gm-left-2': ((geo.mapX + geo.mapH) / f / z).toFixed(2) + 'px',
     };
     const body = Object.entries(vars).map(([k2, val]) => `s.setProperty('${k2}', '${val}');`).join('');
-    wc.executeJavaScript(`(() => { const s = document.documentElement.style; ${body} document.documentElement.classList.add('app-ggw-maps'); })()`).catch(() => {});
+    wc.executeJavaScript(`(() => { const s = document.documentElement.style; ${body} document.documentElement.classList.add('app-ggw-maps'); dispatchEvent(new Event('resize')); })()`).catch(() => {});
   } else {
     wc.executeJavaScript(`document.documentElement.classList.remove('app-ggw-maps')`).catch(() => {});
   }
@@ -444,9 +496,10 @@ function layout() {
   const show = (name, on) => views[name].setVisible(on);
   geo = pickGeometry(W, H);
   const grid = geo.kind === 'grid';
-  show('z3r', grid && xkeysOn());
+  const panels = (grid || geo.kind === 'vertical') && xkeysOn();
+  show('z3r', panels);
   show('raceDivider', grid && cfg.showRace);
-  if (grid && xkeysOn()) ensureZ3r();
+  if (panels) ensureZ3r();
 
   if (grid) {
     const { itemsW, row1H, bandY, bandH, row3Y, row3H, statsW, raceW, ggw } = geo;
@@ -466,6 +519,18 @@ function layout() {
       views.controls.setBounds({ x: 0, y: row3Y, width: W, height: BAR });
       views.timer.setBounds({ x: 0, y: row3Y + BAR, width: W, height: Math.max(0, row3H - BAR) });
     }
+  } else if (geo.kind === 'vertical') {
+    const { leftW, rightX, rightW, bandH } = geo;
+    views.tracker.setBounds({ x: 0, y: 0, width: leftW, height: H });
+    show('itemsDivider', false); show('colDivider', true); show('mapDivider', bandH > 0);
+    views.colDivider.setBounds({ x: leftW, y: 0, width: DIV, height: H });
+    let y = 0;
+    if (bandH) {
+      views.z3r.setBounds({ x: rightX, y: 0, width: rightW, height: bandH });
+      views.mapDivider.setBounds({ x: rightX, y: bandH, width: rightW, height: DIV });
+      y = bandH + DIV;
+    }
+    layoutRightBox(rightX, y, rightW, H - y, cfg.verticalSplit);
   } else if (geo.kind === 'L') {
     const { topH, itemsW } = geo;
     views.tracker.setBounds({ x: 0, y: 0, width: W, height: H });
@@ -619,13 +684,16 @@ function createMain() {
   z3rExtent = null;
   z3rMaps = 0;
   win = new BaseWindow({
-    ...cfg.bounds,
+    ...(mode === 'vertical' ? cfg.verticalBounds : cfg.bounds),
     minWidth: 600, minHeight: 420,
     title: 'ALttP Tracker',
     backgroundColor: '#000000',
     show: !isTest,
   });
-  if (isTest) win.showInactive();
+  if (isTest) {
+    if (process.env.SHOT_HIDDEN) { win.setOpacity(0); win.setIgnoreMouseEvents(true); }
+    win.showInactive();
+  }
   win.setAlwaysOnTop(cfg.alwaysOnTop, 'floating');
 
   const uiPreload = path.join(__dirname, 'ui/preload.js');
@@ -689,7 +757,11 @@ function createMain() {
 
   layout();
   win.on('resize', layout);
-  const saveBounds = () => { if (win && !win.isMinimized() && !win.isFullScreen()) { cfg.bounds = win.getBounds(); saveConfig(); } };
+  const saveBounds = () => {
+    if (!win || win.isMinimized() || win.isFullScreen()) return;
+    if (mode === 'vertical') cfg.verticalBounds = win.getBounds(); else cfg.bounds = win.getBounds();
+    saveConfig();
+  };
   win.on('resized', saveBounds);
   win.on('moved', saveBounds);
   win.on('close', () => { saveBounds(); writeConfig(); });
@@ -723,12 +795,15 @@ const siteWins = {};
 function openLauncher() {
   if (launcher && !launcher.isDestroyed()) { launcher.focus(); return; }
   launcher = new BrowserWindow({
-    width: 620, height: 640, minWidth: 520, minHeight: 480,
+    width: 620, height: 720, minWidth: 520, minHeight: 480,
     title: 'ALttP Tracker Launcher', backgroundColor: '#15171b',
     show: !isTest,
     webPreferences: { preload: path.join(__dirname, 'ui/preload.js'), contextIsolation: true, sandbox: true },
   });
-  if (isTest) launcher.showInactive();
+  if (isTest) {
+    if (process.env.SHOT_HIDDEN) { launcher.setOpacity(0); launcher.setIgnoreMouseEvents(true); }
+    launcher.showInactive();
+  }
   launcher.loadFile(path.join(__dirname, 'ui/launcher.html'));
   launcher.on('closed', () => {
     launcher = null;
@@ -745,6 +820,7 @@ function launcherState() {
     showRace: cfg.showRace,
     running: !!win,
     muffinsSite: cfg.muffinsSite,
+    windowLayout: cfg.windowLayout,
     flags: seedFlags(),
   };
 }
@@ -824,7 +900,7 @@ on('drag-start', (_e, id) => {
     id,
     geo: { ...geo },
     mapFrac: geo.H ? (geo.H - DIV - (geo.topH || 0)) / (geo.H - DIV) : 0.5,
-    rightSplit: cfg.rightSplit,
+    rightSplit: geo.kind === 'vertical' ? cfg.verticalSplit : cfg.rightSplit,
   };
 });
 on('drag-move', (_e, id, dx, dy) => {
@@ -840,6 +916,10 @@ on('drag-move', (_e, id, dx, dy) => {
     if (id === 'items') cfg.itemsFrac = clamp((g.itemsW + dx) / W, 0.1, 0.9);
   } else if (g.kind === 'stack') {
     if (id === 'col') cfg.stackFrac = clamp((g.leftW + dx) / W, 0.1, 0.9);
+  } else if (g.kind === 'vertical') {
+    if (id === 'right') cfg.verticalSplit = clamp(drag.rightSplit + dy / Math.max(1, H - (g.bandH ? g.bandH + DIV : 0) - DIV - BAR), 0.05, 0.9);
+    layout();
+    return;
   } else if (id === 'col') {
     cfg.colFrac = clamp((g.rightW - dx) / W, 0.15, 0.8);
   }
@@ -852,6 +932,10 @@ on('drag-move', (_e, id, dx, dy) => {
 on('drag-end', () => { drag = null; saveConfig(); });
 on('drag-reset', (_e, id) => {
   const kind = geo?.kind;
+  if (kind === 'vertical') {
+    if (id === 'right') { cfg.verticalSplit = DEFAULTS.verticalSplit; saveConfig(); layout(); }
+    return;
+  }
   if (kind === 'grid') {
     if (id === 'items') cfg.gridItemsFrac = null;
     if (id === 'map') cfg.gridMapFrac = null;
@@ -866,6 +950,7 @@ on('drag-reset', (_e, id) => {
 });
 
 on('set-option', (_e, key, value) => {
+  if (key === 'windowLayout') { cfg.windowLayout = value === 'vertical' ? 'vertical' : 'wide'; saveConfig(); sendLauncherState(); return; }
   if (key === 'muffinsSite') { cfg.muffinsSite = value === 'v2' ? 'v2' : 'classic'; saveConfig(); sendLauncherState(); return; }
   if (['hideChat', 'blurTimes', 'showRace', 'fitTimer', 'alwaysOnTop', 'showLauncher'].includes(key)) setOption(key, !!value);
 });
@@ -1007,7 +1092,7 @@ app.whenReady().then(() => {
   lockDownSession(session.defaultSession);
   loadConfig();
   if (process.env.SHOT_CFG) Object.assign(cfg, JSON.parse(process.env.SHOT_CFG));
-  if (process.env.SHOT_SIZE) { const [w, h] = process.env.SHOT_SIZE.split('x').map(Number); cfg.bounds = { width: w, height: h }; }
+  if (process.env.SHOT_SIZE) { const [w, h] = process.env.SHOT_SIZE.split('x').map(Number); cfg.bounds = cfg.verticalBounds = { width: w, height: h }; }
   if (process.env.SHOT_LAUNCHER) { openLauncher(); launcherShot(process.env.SHOT_DIR); return; }
   if (isTest || !cfg.showLauncher) createMain();
   else openLauncher();
