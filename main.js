@@ -736,7 +736,9 @@ function createMain() {
   const rc = views.race.webContents;
   rc.on('dom-ready', async () => {
     rc.setZoomLevel(cfg.zoom.race);
-    await setCss('race', 'base', CSS.race, true);
+    // Only race rooms get the compact layout; it collapses login and other pages.
+    const room = await rc.executeJavaScript("!!document.querySelector('.race-status')").catch(() => false);
+    await setCss('race', 'base', CSS.race, room);
     applyRaceCss();
   });
   rc.on('did-navigate', sendState);

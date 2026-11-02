@@ -1,7 +1,7 @@
 {
   "name": "alttp-tracker-window",
   "productName": "ALttP Tracker",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Muffins tracker and Stonks timer in one window",
   "main": "main.js",
   "author": "CVW-HMB",
