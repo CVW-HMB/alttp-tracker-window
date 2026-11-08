@@ -103,6 +103,7 @@ const CSS = {
   race: read('inject/race.css'),
   raceHideChat: read('inject/race-hide-chat.css'),
   raceBlur: read('inject/race-blur.css'),
+  racePrompt: read('inject/race-prompt.css'),
   z3r: read('inject/z3r.css'),
 };
 const TIMER_FIT_JS = read('inject/timer-fit.js');
@@ -110,6 +111,7 @@ const MUFFINS_FIT_JS = read('inject/muffins-fit.js');
 const MUFFINS2_STATE_JS = read('inject/muffins2-state.js');
 const MUFFINS2_MAPMODE_JS = read('inject/muffins2-mapmode.js');
 const Z3R_SETUPS_JS = read('inject/z3r-setups.js');
+const RACE_PROMPT_JS = read('inject/race-prompt.js');
 
 // ---------- xkeys setups (stored by the app, not the tracker) ----------
 
@@ -740,6 +742,9 @@ function createMain() {
     const room = await rc.executeJavaScript("!!document.querySelector('.race-status')").catch(() => false);
     await setCss('race', 'base', CSS.race, room);
     applyRaceCss();
+    // racetime's Add comment button needs window.prompt(), which Electron lacks.
+    await setCss('race', 'prompt', CSS.racePrompt, true);
+    rc.executeJavaScript(RACE_PROMPT_JS).catch(() => {});
   });
   rc.on('did-navigate', sendState);
   rc.on('did-navigate-in-page', sendState);
