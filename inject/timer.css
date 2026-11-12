@@ -2,14 +2,14 @@ html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !impo
 #root {
   position: fixed !important;
   left: 50% !important;
-  top: 50% !important;
+  top: var(--fit-top, 0px) !important;
   width: max-content !important;
-  transform: translate(-50%, -50%) scale(var(--fit, 1));
-  transform-origin: center center;
+  transform: translate(-50%, 0) scale(var(--fit, 1));
+  transform-origin: center top;
 }
 html.tt-row #root > div {
   display: grid !important;
-  grid-template-columns: auto auto;
+  grid-template-columns: auto minmax(300px, auto);
   column-gap: 28px;
   align-items: center;
   justify-items: center;
