@@ -146,20 +146,20 @@
   // Report how much room the content needs so the app can zoom it to fit the pane.
   const extent = () => {
     const dialogOpen = [...document.querySelectorAll('[id$="-overlay"]')].some((el) => !el.classList.contains('coop-hidden') && el.offsetParent !== null);
-    if (dialogOpen) return { w: 720, h: 440 };
+    if (dialogOpen) return { w: 720, h: 440, screen: 'dialog' };
     if (onSettingsScreen()) {
       const o = document.getElementById('options');
-      return { w: o.offsetWidth + 24, h: o.scrollHeight + 24 };
+      return { w: o.offsetWidth + 24, h: o.scrollHeight + 24, screen: 'settings' };
     }
     let r = 0, b = 0;
     for (const el of document.querySelectorAll('.location-container')) {
       if (el.offsetParent === null) continue;
       const rc = el.getBoundingClientRect();
       if (!rc.width || !rc.height) continue;
-      r = Math.max(r, el.offsetLeft + el.offsetWidth);
+      r = Math.max(r, el.offsetLeft - (parseFloat(getComputedStyle(el).marginLeft) || 0) + el.offsetWidth);
       b = Math.max(b, el.offsetTop - (parseFloat(getComputedStyle(el).marginTop) || 0) + el.offsetHeight);
     }
-    return r && b ? { w: r + 72, h: b + 6 } : null;
+    return r && b ? { w: r + 72, h: b + 6, screen: 'panels' } : null;
   };
   const mapCount = () => {
     const maps = document.getElementById('enable-maps');
@@ -171,7 +171,7 @@
     const e = extent();
     if (!e) return;
     e.maps = mapCount();
-    const key = Math.round(e.w) + 'x' + Math.round(e.h) + ':' + e.maps;
+    const key = Math.round(e.w) + 'x' + Math.round(e.h) + ':' + e.maps + ':' + e.screen;
     if (key === last) return;
     last = key;
     api.extent(e);

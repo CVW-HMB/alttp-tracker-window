@@ -35,7 +35,9 @@
   .flash { animation: flash 1.6s ease-out; }
   @keyframes flash { from { box-shadow: 0 0 0 2px var(--accent); } to { box-shadow: 0 0 0 0 transparent; } }
   footer { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(21, 23, 27, 0.96); border-top: 1px solid var(--line); padding: 12px 18px; }
-  footer .inner { max-width: 640px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  footer .inner { max-width: 640px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  footer .go { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+  footer .go label.check { white-space: nowrap; }
   label.check { display: flex; gap: 6px; align-items: center; color: var(--muted); cursor: pointer; }
   [hidden] { display: none !important; }
   .head { display: flex; align-items: center; gap: 8px; }
@@ -101,7 +103,10 @@
 <footer>
   <div class="inner">
     <label class="check"><input type="checkbox" id="showLauncher"> Open launcher on start</label>
-    <button class="btn primary" id="launch">Launch</button>
+    <div class="go">
+      <label class="check" id="customLabel" title="Arrange the widgets in a wireframe before the window opens. Starts from the Wide or Vertical arrangement selected above."><input type="checkbox" id="customLayout"> Launch with custom layout</label>
+      <button class="btn primary" id="launch">Launch</button>
+    </div>
   </div>
 </footer>
 
@@ -120,7 +125,8 @@
     if (document.activeElement !== $('timerUrl')) $('timerUrl').value = st.urls.timer;
     if (document.activeElement !== $('raceUrl')) $('raceUrl').value = st.urls.race;
     $('showLauncher').checked = st.showLauncher;
-    $('launch').textContent = st.running ? 'Relaunch' : 'Launch';
+    $('customLayout').checked = !!st.customLayout;
+    $('launch').textContent = (st.running ? 'Relaunch' : 'Launch') + (st.customLayout ? '…' : '');
     if (s.flash) {
       const card = s.flash === 'muffins' ? $('muffinsCard') : $('timerCard');
       card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
@@ -141,9 +147,10 @@
   $('raceUrl').addEventListener('change', saveRace);
   $('raceUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('raceUrl').blur(); });
   $('showLauncher').onchange = () => api.send('set-option', 'showLauncher', $('showLauncher').checked);
+  $('customLayout').onchange = () => api.send('set-option', 'customLayout', $('customLayout').checked);
   $('launch').onclick = () => {
     if (document.activeElement === $('raceUrl')) saveRace();
-    api.send('launch');
+    api.send(state.customLayout ? 'open-layout-editor' : 'launch');
   };
 </script>
 </body>

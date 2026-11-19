@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Arrange the window</title>
+<style>
+  :root {
+    --bg: #15171b; --card: #1d2025; --line: #2c3038; --fg: #e3e5e8; --muted: #8f949c;
+    --accent: #1da674; --accent-fg: #7fe0b8; --chip: #262a31;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--fg); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { padding: 14px 18px 8px; flex: none; }
+  h1 { font-size: 17px; margin: 0; letter-spacing: 0.2px; }
+  .muted { color: var(--muted); }
+  #mode { margin-top: 2px; }
+  #note { font-size: 12px; margin-top: 2px; }
+  #hint { font-size: 12px; margin-top: 2px; }
+  #stage { position: relative; flex: 1; min-height: 0; overflow: hidden; user-select: none; -webkit-user-select: none; }
+  #frame { position: absolute; outline: 1px dashed var(--muted); outline-offset: 0; touch-action: none; }
+  .box { position: absolute; overflow: hidden; padding: 3px 4px; background: var(--card); border: 1px solid var(--accent); border-radius: 3px; cursor: grab; touch-action: none; line-height: 1.2; overflow-wrap: anywhere; }
+  .box.fixed { border-color: #5b6f9a; }
+  .box.drag { cursor: grabbing; background: #232830; z-index: 5; }
+  .label { font-weight: 600; color: var(--fg); }
+  .sub { color: var(--accent-fg); font-size: 0.9em; }
+  .dim { color: var(--muted); font-size: 0.85em; }
+  .handle { position: absolute; background: transparent; z-index: 2; }
+  .handle:hover { background: rgba(29, 166, 116, 0.35); }
+  .handle[data-edge=e] { right: 0; top: 0; bottom: 10px; width: 8px; cursor: ew-resize; }
+  .handle[data-edge=s] { bottom: 0; left: 0; right: 10px; height: 8px; cursor: ns-resize; }
+  .handle[data-edge=se] { right: 0; bottom: 0; width: 10px; height: 10px; cursor: nwse-resize; background: rgba(29, 166, 116, 0.25); }
+  .guide { position: absolute; background: var(--accent); pointer-events: none; z-index: 6; }
+  .guide.v { width: 1px; top: -4000px; height: 8000px; }
+  .guide.h { height: 1px; left: -4000px; width: 8000px; }
+  #msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+  footer { flex: none; background: rgba(21, 23, 27, 0.96); border-top: 1px solid var(--line); padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  footer .btns { display: flex; gap: 8px; }
+  button.btn { background: #262a31; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  button.btn:hover { background: #30353e; }
+  button.btn:disabled { opacity: 0.5; cursor: default; }
+  button.primary { background: #17583f; border-color: var(--accent); color: #dff7ec; font-weight: 600; }
+  button.primary:hover { background: #1b6a4b; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Arrange the window</h1>
+  <div id="mode" class="muted"></div>
+  <div id="note" class="muted" hidden></div>
+  <div id="hint" class="muted">Drag boxes to arrange them; they snap with a 4 px gap. Stonks and Racetime resize from their right and bottom edges.</div>
+</header>
+<div id="stage"><div id="frame"></div><div id="msg" hidden></div></div>
+<footer>
+  <div id="size" class="muted"></div>
+  <div class="btns">
+    <button class="btn" id="reset">Reset to Standard</button>
+    <button class="btn" id="cancel">Back</button>
+    <button class="btn primary" id="confirm">Launch</button>
+  </div>
+</footer>
+<script src="arrange.js"></script>
+<script src="layout-editor.js"></script>
+</body>
+</html>

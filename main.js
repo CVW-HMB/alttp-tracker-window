@@ -2,6 +2,7 @@ const { app, BaseWindow, BrowserWindow, WebContentsView, Menu, ipcMain, shell, n
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
+const Arrange = require('./ui/arrange.js');
 
 const DEFAULT_URLS = {
   tracker: 'https://alttprtracker.mfns.dev/tracker.html?f=SNNNNNNNN0000NNNNNGC7C7RNN&d=MYNNNF00111&a=Y23074localhost&s=00000000000000000000000000&p=link&r=1793413549238#!',
@@ -20,7 +21,12 @@ const DEFAULTS = {
   showLauncher: true,
   bounds: { width: 1500, height: 920 },
   windowLayout: 'wide',   // 'wide' | 'vertical': items over stacked maps, everything else in a column on the right
+  customLayout: false,    // launch through the layout editor and place the widgets as arranged there
   verticalBounds: { width: 750, height: 960 },
+  customLayouts: {},      // custom layout: { [combination key]: { boxes } }
+  z3rExtents: { wide: null, vertical: null },   // custom layout: last entrance tracker extent { w, h, maps } per window layout
+  customPos: null,        // custom layout: window position { x, y }
+  muffins2Sizes: {},      // custom layout: muffins 2.0 block size { w, h } seen per map mode
   verticalSplit: 0.3,     // vertical: share of the right box below the xkeys panels given to the timer
   layout: 'grid',         // muffins with maps beside items: 'grid' | 'L' | 'stack' | 'auto'
   gridItemsFrac: null,    // grid: share of width for the items box; null = same height as the maps
@@ -76,6 +82,9 @@ function loadConfig() {
       if (saved.bounds && saved.bounds.width < 1200) cfg.bounds = { ...saved.bounds, width: DEFAULTS.bounds.width };
     }
     if (v < 4) Object.assign(cfg, { gridItemsFrac: null, gridMapFrac: null, gridRaceFrac: DEFAULTS.gridRaceFrac });
+    for (const k of ['customLayouts', 'z3rExtents', 'muffins2Sizes']) {
+      if (!cfg[k] || typeof cfg[k] !== 'object' || Array.isArray(cfg[k])) cfg[k] = structuredClone(DEFAULTS[k]);
+    }
     delete cfg.tracker;
     delete cfg.xkeys;
     delete cfg.z3r;
@@ -252,6 +261,81 @@ function layoutMode() {
 // ---------- main window ----------
 
 let win = null, views = {}, geo = null, focused = 'timer', mode = 'split', z3rLoaded = false, z3rExtent = null, z3rMaps = 0;
+let custom = null;   // custom layout session: { ext, liveMaps, panels, screen, order, key, ctx, elements, boxes, saved, frame }
+
+const validExt = (e) => !!e && Number.isFinite(e.w) && Number.isFinite(e.h) && e.w > 0 && e.h > 0;
+
+// Plain description of the window's widgets for Arrange; session is null for the editor.
+function customCtx(session) {
+  const L = session ? (mode === 'vertical' ? 'vertical' : 'wide') : (vertical() ? 'vertical' : 'wide');
+  const v = L === 'vertical', v2 = muffinsV2();
+  const ctx = { windowLayout: L, v2, muffins: 'block', muffinsSize: { w: 448, h: 448 }, muffinsParts: [], entrance: xkeysOn(), ggwMaps: 0, z3rExtent: null, showRace: cfg.showRace };
+  if (!v2) {
+    const d = muffinsDisplay(), sphere = d[3] === 'Y';
+    if (v) {
+      ctx.muffinsSize = classicSize('V' + d.slice(1));
+      ctx.muffinsParts = ['stacked maps', sphere && 'sphere tracker'].filter(Boolean);
+    } else if (muffinsSplit()) {
+      ctx.muffins = 'split';
+    } else {
+      const z = classicSize(d);
+      ctx.muffinsSize = z;
+      if (z.w === 448 && z.h === 448) ctx.muffins = 'items';
+      else ctx.muffinsParts = [d[0] === 'M' ? 'maps' : d[0] === 'C' ? 'compact maps' : d[0] === 'V' ? 'stacked maps' : null, sphere && 'sphere tracker'].filter(Boolean);
+    }
+  } else {
+    const mm = v ? 'vertical' : ((cfg.muffins2Restore?.id === muffins2Id() ? cfg.muffins2Restore.mapMode : cfg.muffins2?.mapMode) || 'normal');
+    if (!v && muffinsSplit()) ctx.muffins = 'split';
+    else {
+      ctx.muffinsSize = muffins2Size || cfg.muffins2Sizes[mm] || (mm === 'vertical' ? { w: 448, h: 1344 } : { w: 448, h: 448 });
+      ctx.muffinsParts = mm === 'vertical' ? ['stacked maps'] : (!mm || mm === 'none') ? [] : [mm + ' maps'];
+    }
+  }
+  const cached = cfg.z3rExtents[L];
+  ctx.z3rExtent = session ? session.ext : (validExt(cached) ? { w: cached.w, h: cached.h } : null);
+  ctx.ggwMaps = session && session.liveMaps != null ? session.liveMaps : (cached?.maps === 1 || cached?.maps === 2 ? cached.maps : 0);
+  return ctx;
+}
+
+// Re-resolves the session's arrangement; true when its combination changed.
+function customResolve() {
+  const ctx = customCtx(custom);
+  const r = Arrange.resolve(ctx, cfg.customLayouts[Arrange.comboKey(ctx)]);
+  const changed = r.key !== custom.key;
+  Object.assign(custom, { ctx, key: r.key, elements: r.elements, boxes: r.boxes, saved: r.saved, frame: Arrange.frame(r.boxes) });
+  return changed;
+}
+
+function customArea() {
+  if (isTest && process.env.SHOT_AREA) {
+    const [width, height] = process.env.SHOT_AREA.split('x').map(Number);
+    return { x: 0, y: 0, width, height };
+  }
+  const { screen } = require('electron');
+  const pos = cfg.customPos && Number.isFinite(cfg.customPos.x) && Number.isFinite(cfg.customPos.y) ? cfg.customPos : null;
+  return (pos ? screen.getDisplayNearestPoint(pos) : screen.getPrimaryDisplay()).workArea;
+}
+
+// Opens at the arrangement's natural size, scaled down only to fit the monitor; later calls only shrink.
+function sizeCustomWindow(initial) {
+  const b = win.getBounds(), c = win.getContentBounds();
+  const area = customArea(), F = custom.frame;
+  const fit = Arrange.fitScale(F, { width: area.width - (b.width - c.width), height: area.height - (b.height - c.height) });
+  const s = initial ? fit : Math.min(geo?.kind === 'custom' ? geo.s : fit, fit);
+  const sim = isTest && process.env.SHOT_SIZE;
+  const [cw, ch] = initial && sim ? [cfg.bounds.width, cfg.bounds.height] : [Math.round(F.w * s), Math.round(F.h * s)];
+  win.setAspectRatio(0);
+  win.setContentSize(cw, ch);
+  if (!sim) win.setAspectRatio(F.w / F.h);
+  const nb = win.getBounds();
+  const cx = (x) => Math.max(area.x, Math.min(x, area.x + area.width - nb.width));
+  const cy = (y) => Math.max(area.y, Math.min(y, area.y + area.height - nb.height));
+  if (!initial) win.setPosition(cx(nb.x), cy(nb.y));
+  else if (cfg.customPos && Number.isFinite(cfg.customPos.x) && Number.isFinite(cfg.customPos.y)) win.setPosition(cx(cfg.customPos.x), cy(cfg.customPos.y));
+  else win.setPosition(cx(area.x + Math.round((area.width - nb.width) / 2)), cy(area.y + Math.round((area.height - nb.height) / 2)));
+}
+
+const customScale = () => (custom && geo?.kind === 'custom' ? geo.s : 1);
 
 function makeView(name, opts = {}) {
   const v = new WebContentsView({
@@ -310,7 +394,9 @@ function setVars(name, vars) {
 
 function pushTrackerLayout() {
   if (!geo) return;
-  if (mode === 'split') {
+  if (mode === 'split' && geo.kind === 'custom') {
+    setVars('tracker', geo.tracker.vars);
+  } else if (mode === 'split') {
     setVars('tracker', {
       '--it-scale': geo.itemsScale,
       '--map-scale': geo.mapScale,
@@ -319,7 +405,8 @@ function pushTrackerLayout() {
     });
   } else if (muffinsV2()) {
     const b = views.tracker.getBounds();
-    if (muffins2Size) setVars('tracker', { '--fit': Math.max(0.1, Math.min(b.width / muffins2Size.w, b.height / muffins2Size.h)) });
+    if (geo.kind === 'custom') setVars('tracker', { '--fit': Math.max(0.1, geo.tracker.fit) });
+    else if (muffins2Size) setVars('tracker', { '--fit': Math.max(0.1, Math.min(b.width / muffins2Size.w, b.height / muffins2Size.h)) });
   } else {
     views.tracker.webContents.executeJavaScript('window.__muffinsFit && window.__muffinsFit()').catch(() => {});
   }
@@ -346,7 +433,11 @@ async function pollMuffins2() {
   syncMuffins2MapMode(wc, muffins2Id(), typeof st.s?.mapMode === 'string' ? st.s.mapMode : null);
   const w = +st.w, h = +st.h;
   const sizeChanged = w > 0 && h > 0 && (w !== muffins2Size?.w || h !== muffins2Size?.h);
-  if (sizeChanged) muffins2Size = { w, h };
+  if (sizeChanged) {
+    muffins2Size = { w, h };
+    cfg.muffins2Sizes[mode === 'vertical' ? 'vertical' : (st.s?.mapMode || 'normal')] = { w, h };
+    saveConfig();
+  }
   const next = { ...cfg.muffins2, ...summarizeMuffins2(st.s) };
   const settingsChanged = JSON.stringify(next) !== JSON.stringify(cfg.muffins2);
   if (settingsChanged) { cfg.muffins2 = next; saveConfig(); sendLauncherState(); }
@@ -458,6 +549,15 @@ function fitZ3r() {
   const v = views.z3r;
   if (!v || !v.getVisible() || !geo) return;
   const wc0 = v.webContents;
+  if (geo.kind === 'custom') {
+    const p = geo.z3r;
+    if (!p) return;
+    wc0.setZoomFactor(p.zoom);
+    const body = Object.entries(p.vars).map(([k, val]) => `s.setProperty('${k}', '${val}');`).join('');
+    const ov = !!p.overlay;
+    wc0.executeJavaScript(`(() => { const r = document.documentElement, s = r.style; ${body} r.classList.toggle('app-vertical', ${!ov && p.vertical}); r.classList.toggle('app-ggw-maps', ${!ov && p.ggw > 0}); dispatchEvent(new Event('resize')); })()`).catch(() => {});
+    return;
+  }
   if (geo.kind === 'vertical') {
     wc0.setZoomFactor(geo.z3rZoom);
     const flow = (geo.rightW / geo.z3rZoom).toFixed(2) + 'px';
@@ -495,6 +595,7 @@ function ensureZ3r() {
 function layout() {
   if (!win || win.isDestroyed()) return;
   const { width: W, height: H } = win.getContentBounds();
+  if (custom) return layoutCustom(W, H);
   const show = (name, on) => views[name].setVisible(on);
   geo = pickGeometry(W, H);
   const grid = geo.kind === 'grid';
@@ -557,6 +658,48 @@ function layout() {
   fitZ3r();
 }
 
+function layoutCustom(W, H) {
+  if (customResolve()) {
+    sizeCustomWindow(false);
+    ({ width: W, height: H } = win.getContentBounds());
+  }
+  const { ctx, boxes, frame, key } = custom;
+  const t = Arrange.windowScale(frame, W, H), w = { W, H };
+  const tp = Arrange.trackerPlan(ctx, boxes, t, w);
+  const zp = Arrange.z3rPlan(ctx, boxes, t, w, custom.panels);
+  const overlay = !!(zp && z3rExtent && custom.screen && custom.screen !== 'panels');
+  const zv = overlay ? { ...zp, ...Arrange.z3rOverlay(Arrange.toView(boxes.entrance, t), z3rExtent, w), overlay: true } : zp;
+  geo = { kind: 'custom', key, s: t.s, ox: t.ox, oy: t.oy, frame, boxes, tracker: tp, z3r: zv, W, H };
+  for (const d of ['mapDivider', 'itemsDivider', 'colDivider', 'rightDivider', 'raceDivider']) views[d].setVisible(false);
+  views.tracker.setVisible(true); views.timer.setVisible(true); views.controls.setVisible(true);
+  views.race.setVisible(cfg.showRace);
+  views.z3r.setVisible(!!zp);
+  if (zp) ensureZ3r();
+  views.tracker.setBounds(tp.bounds);
+  if (zv) views.z3r.setBounds(zv.bounds);
+  views.timer.setBounds(Arrange.toView(boxes.stonks, t));
+  const rv = Arrange.raceViews(boxes.race, t);
+  views.controls.setBounds(rv.controls);
+  views.race.setBounds(rv.race);
+  const order = [...(zp && zp.back ? ['z3r', 'tracker'] : ['tracker', 'z3r']), 'timer', 'race', 'controls'];
+  if (overlay) order.push(order.splice(order.indexOf('z3r'), 1)[0]);
+  if (order.join() !== custom.order) {
+    for (const n of order) win.contentView.addChildView(views[n]);
+    custom.order = order.join();
+  }
+  customZoom();
+  pushTrackerLayout();
+  fitZ3r();
+}
+
+function customZoom() {
+  const s = customScale();
+  const set = (n, z) => { const wc = views[n]?.webContents; if (wc && !wc.isDestroyed()) wc.setZoomFactor(z); };
+  set('race', 1.2 ** cfg.zoom.race * s);
+  set('timer', 1.2 ** cfg.zoom.timer * s);
+  set('controls', s);
+}
+
 function sendState() {
   const s = { hideChat: cfg.hideChat, blurTimes: cfg.blurTimes, showRace: cfg.showRace, fitTimer: cfg.fitTimer, alwaysOnTop: cfg.alwaysOnTop, raceUrl: views.race?.webContents.getURL() || cfg.urls.race };
   if (views.controls && !views.controls.webContents.isDestroyed()) views.controls.webContents.send('state', s);
@@ -596,7 +739,7 @@ function loadRace(input) {
 function zoomFocused(delta) {
   const name = focused === 'race' ? 'race' : 'timer';
   cfg.zoom[name] = delta === 0 ? DEFAULTS.zoom[name] : Math.max(-5, Math.min(5, cfg.zoom[name] + delta));
-  views[name].webContents.setZoomLevel(cfg.zoom[name]);
+  if (custom) layout(); else views[name].webContents.setZoomLevel(cfg.zoom[name]);
   saveConfig();
 }
 
@@ -640,16 +783,16 @@ function buildMenu() {
         {
           label: 'Layout',
           submenu: [
-            { label: 'Grid', type: 'radio', checked: cfg.layout === 'grid', click: () => setLayout('grid') },
-            { label: 'L Shape', type: 'radio', checked: cfg.layout === 'L', click: () => setLayout('L') },
-            { label: 'Stacked Column', type: 'radio', checked: cfg.layout === 'stack', click: () => setLayout('stack') },
-            { label: 'Auto (L or Stacked)', type: 'radio', checked: cfg.layout === 'auto', click: () => setLayout('auto') },
+            { label: 'Grid', type: 'radio', enabled: !custom, checked: cfg.layout === 'grid', click: () => setLayout('grid') },
+            { label: 'L Shape', type: 'radio', enabled: !custom, checked: cfg.layout === 'L', click: () => setLayout('L') },
+            { label: 'Stacked Column', type: 'radio', enabled: !custom, checked: cfg.layout === 'stack', click: () => setLayout('stack') },
+            { label: 'Auto (L or Stacked)', type: 'radio', enabled: !custom, checked: cfg.layout === 'auto', click: () => setLayout('auto') },
           ],
         },
         { label: 'Show Race Room', type: 'checkbox', checked: cfg.showRace, accelerator: 'CmdOrCtrl+Shift+R', click: (i) => setOption('showRace', i.checked) },
         { label: 'Auto-fit Timer', type: 'checkbox', checked: cfg.fitTimer, click: (i) => setOption('fitTimer', i.checked) },
-        { label: 'Reset Layout', enabled: !!win, click: resetLayout },
-        { label: 'Snap Window to Square', enabled: !!win, click: () => { const b = win.getContentBounds(); const s = Math.max(b.width, b.height); win.setContentSize(s, s); } },
+        { label: 'Reset Layout', enabled: !!win && !custom, click: resetLayout },
+        { label: 'Snap Window to Square', enabled: !!win && !custom, click: () => { const b = win.getContentBounds(); const s = Math.max(b.width, b.height); win.setContentSize(s, s); } },
         { type: 'separator' },
         { label: 'Zoom In (timer/race pane)', accelerator: 'CmdOrCtrl+=', enabled: !!win, click: () => zoomFocused(0.5) },
         { label: 'Zoom Out (timer/race pane)', accelerator: 'CmdOrCtrl+-', enabled: !!win, click: () => zoomFocused(-0.5) },
@@ -685,17 +828,23 @@ function createMain() {
   z3rLoaded = false;
   z3rExtent = null;
   z3rMaps = 0;
+  custom = null;
+  if (cfg.customLayout) {
+    const c = cfg.z3rExtents[mode === 'vertical' ? 'vertical' : 'wide'];
+    custom = { ext: validExt(c) ? { w: c.w, h: c.h } : null, liveMaps: null, panels: null, screen: null, order: '', key: null };
+    customResolve();
+  }
   win = new BaseWindow({
-    ...(mode === 'vertical' ? cfg.verticalBounds : cfg.bounds),
-    minWidth: 600, minHeight: 420,
+    ...(custom ? { useContentSize: true, width: custom.frame.w, height: custom.frame.h, minWidth: 240, minHeight: 180 }
+      : { ...(mode === 'vertical' ? cfg.verticalBounds : cfg.bounds), minWidth: 600, minHeight: 420 }),
     title: 'ALttP Tracker',
     backgroundColor: '#000000',
-    show: !isTest,
+    show: custom ? false : !isTest,
   });
-  if (isTest) {
-    if (process.env.SHOT_HIDDEN) { win.setOpacity(0); win.setIgnoreMouseEvents(true); }
-    win.showInactive();
-  }
+  if (isTest && process.env.SHOT_HIDDEN) { win.setOpacity(0); win.setIgnoreMouseEvents(true); }
+  if (custom) sizeCustomWindow(true);
+  if (isTest) win.showInactive();
+  else if (custom) win.show();
   win.setAlwaysOnTop(cfg.alwaysOnTop, 'floating');
 
   const uiPreload = path.join(__dirname, 'ui/preload.js');
@@ -724,7 +873,7 @@ function createMain() {
 
   const tm = views.timer.webContents;
   tm.on('dom-ready', async () => {
-    tm.setZoomLevel(cfg.zoom.timer);
+    if (custom) tm.setZoomFactor(1.2 ** cfg.zoom.timer * customScale()); else tm.setZoomLevel(cfg.zoom.timer);
     await tm.executeJavaScript(TIMER_FIT_JS).catch(() => {});
     applyTimerFit();
   });
@@ -737,7 +886,7 @@ function createMain() {
 
   const rc = views.race.webContents;
   rc.on('dom-ready', async () => {
-    rc.setZoomLevel(cfg.zoom.race);
+    if (custom) rc.setZoomFactor(1.2 ** cfg.zoom.race * customScale()); else rc.setZoomLevel(cfg.zoom.race);
     // Only race rooms get the compact layout; it collapses login and other pages.
     const room = await rc.executeJavaScript("!!document.querySelector('.race-status')").catch(() => false);
     await setCss('race', 'base', CSS.race, room);
@@ -756,7 +905,10 @@ function createMain() {
   divider('rightDivider', 'right', 'h');
   divider('raceDivider', 'race', 'v');
   views.controls.webContents.loadFile(path.join(__dirname, 'ui/controls.html'));
-  views.controls.webContents.on('did-finish-load', sendState);
+  views.controls.webContents.on('did-finish-load', () => {
+    if (custom) views.controls.webContents.setZoomFactor(customScale());
+    sendState();
+  });
 
   tw.loadURL(muffinsLoadUrl());
   tm.loadURL(cfg.urls.timer);
@@ -764,17 +916,19 @@ function createMain() {
 
   layout();
   win.on('resize', layout);
+  const isCustom = !!custom;
   const saveBounds = () => {
     if (!win || win.isMinimized() || win.isFullScreen()) return;
-    if (mode === 'vertical') cfg.verticalBounds = win.getBounds(); else cfg.bounds = win.getBounds();
+    if (isCustom) { const b = win.getBounds(); cfg.customPos = { x: b.x, y: b.y }; }
+    else if (mode === 'vertical') cfg.verticalBounds = win.getBounds(); else cfg.bounds = win.getBounds();
     saveConfig();
   };
-  win.on('resized', saveBounds);
+  if (!isCustom) win.on('resized', saveBounds);
   win.on('moved', saveBounds);
   win.on('close', () => { saveBounds(); writeConfig(); });
   win.on('closed', () => {
     clearInterval(muffins2Timer);
-    win = null; views = {};
+    win = null; views = {}; custom = null;
     if (!launcher) app.quit();
   });
 
@@ -801,8 +955,10 @@ const siteWins = {};
 
 function openLauncher() {
   if (launcher && !launcher.isDestroyed()) { launcher.focus(); return; }
+  const testPage = isTest && process.env.SHOT_PAGE;
   launcher = new BrowserWindow({
     width: 620, height: 720, minWidth: 520, minHeight: 480,
+    ...(testPage && process.env.SHOT_SIZE ? cfg.bounds : {}),
     title: 'ALttP Tracker Launcher', backgroundColor: '#15171b',
     show: !isTest,
     webPreferences: { preload: path.join(__dirname, 'ui/preload.js'), contextIsolation: true, sandbox: true },
@@ -811,9 +967,10 @@ function openLauncher() {
     if (process.env.SHOT_HIDDEN) { launcher.setOpacity(0); launcher.setIgnoreMouseEvents(true); }
     launcher.showInactive();
   }
-  launcher.loadFile(path.join(__dirname, 'ui/launcher.html'));
+  launcher.loadFile(path.join(__dirname, testPage || 'ui/launcher.html'), testPage ? { search: process.env.SHOT_PAGE_SEARCH || '' } : undefined);
   launcher.on('closed', () => {
     launcher = null;
+    launcherBounds = null;
     if (!win) app.quit();
   });
   buildMenu();
@@ -828,6 +985,7 @@ function launcherState() {
     running: !!win,
     muffinsSite: cfg.muffinsSite,
     windowLayout: cfg.windowLayout,
+    customLayout: cfg.customLayout,
     flags: seedFlags(),
   };
 }
@@ -848,8 +1006,13 @@ function openSiteLauncher(kind) {
   const w = new BrowserWindow({
     width: kind === 'muffins' ? 1100 : 1000, height: 900, title: kind === 'muffins' ? 'Muffins tracker launcher' : 'Stonks tracker launcher',
     backgroundColor: '#111', parent: launcher || undefined,
+    show: !isTest,
     webPreferences: { contextIsolation: true, sandbox: true },
   });
+  if (isTest) {
+    if (process.env.SHOT_HIDDEN) { w.setOpacity(0); w.setIgnoreMouseEvents(true); }
+    w.showInactive();
+  }
   w.site = site;
   siteWins[kind] = w;
   const v2 = site === SITES.muffins2;
@@ -902,7 +1065,7 @@ const handle = (ch, fn) => ipcMain.handle(ch, (e, ...a) => (fromApp(e) ? fn(e, .
 
 let drag = null;
 on('drag-start', (_e, id) => {
-  if (!geo) return;
+  if (!geo || geo.kind === 'custom') return;
   drag = {
     id,
     geo: { ...geo },
@@ -959,7 +1122,7 @@ on('drag-reset', (_e, id) => {
 on('set-option', (_e, key, value) => {
   if (key === 'windowLayout') { cfg.windowLayout = value === 'vertical' ? 'vertical' : 'wide'; saveConfig(); sendLauncherState(); return; }
   if (key === 'muffinsSite') { cfg.muffinsSite = value === 'v2' ? 'v2' : 'classic'; saveConfig(); sendLauncherState(); return; }
-  if (['hideChat', 'blurTimes', 'showRace', 'fitTimer', 'alwaysOnTop', 'showLauncher'].includes(key)) setOption(key, !!value);
+  if (['hideChat', 'blurTimes', 'showRace', 'fitTimer', 'alwaysOnTop', 'showLauncher', 'customLayout'].includes(key)) setOption(key, !!value);
 });
 on('load-race', (_e, u) => loadRace(u));
 on('race-nav', (_e, what) => {
@@ -982,16 +1145,76 @@ on('set-url', (_e, kind, value) => {
   applyLive(kind);
   sendLauncherState();
 });
-on('launch', () => {
+function launchMain() {
   writeConfig();
   const l = launcher;
+  launcherBounds = null;
   createMain();
   if (l && !l.isDestroyed()) { launcher = null; l.close(); }
+}
+on('launch', launchMain);
+
+// Layout editor: shown in the launcher's window, enlarged while it is open.
+let launcherBounds = null;
+on('open-layout-editor', () => {
+  if (!launcher || launcher.isDestroyed()) return;
+  const { screen } = require('electron');
+  launcherBounds = launcherBounds || launcher.getBounds();
+  launcher.loadFile(path.join(__dirname, 'ui/layout-editor.html'));
+  const b = launcherBounds, area = screen.getDisplayMatching(b).workArea;
+  launcher.setContentSize(Math.min(1180, area.width - 40), Math.min(820, area.height - 80));
+  const nb = launcher.getBounds();
+  const x = Math.max(area.x, Math.min(Math.round(b.x + b.width / 2 - nb.width / 2), area.x + area.width - nb.width));
+  const y = Math.max(area.y, Math.min(Math.round(b.y + b.height / 2 - nb.height / 2), area.y + area.height - nb.height));
+  launcher.setPosition(x, y);
+});
+handle('layout-editor-state', () => {
+  const ctx = customCtx(null);
+  const cached = validExt(cfg.z3rExtents[ctx.windowLayout]);
+  const note = !ctx.entrance ? ''
+    : cached ? 'Entrance tracker size and the GGW map setting are taken from your last session.'
+      : 'No entrance tracker session has run yet: its box uses a default size and the muffins maps are shown. Both follow your GGW settings from the next launch on.';
+  return { ...Arrange.resolve(ctx, cfg.customLayouts[Arrange.comboKey(ctx)]), windowLayout: ctx.windowLayout, gap: Arrange.GAP, note };
+});
+on('layout-editor-confirm', (_e, p) => {
+  const ctx = customCtx(null), key = Arrange.comboKey(ctx), els = Arrange.elements(ctx);
+  if (!p || typeof p !== 'object' || p.key !== key || !p.boxes || typeof p.boxes !== 'object') return;
+  const boxes = {};
+  for (const e of els) {
+    const r = p.boxes[e.id];
+    if (!r || typeof r !== 'object') return;
+    boxes[e.id] = { x: r.x, y: r.y, w: r.w, h: r.h };
+  }
+  if (!Arrange.valid(boxes, els)) return;
+  cfg.customLayouts[key] = { boxes };
+  launchMain();
+});
+on('layout-editor-cancel', () => {
+  if (!launcher || launcher.isDestroyed()) return;
+  launcher.loadFile(path.join(__dirname, 'ui/launcher.html'));
+  if (launcherBounds) launcher.setBounds(launcherBounds);
+  launcherBounds = null;
 });
 
 // xkeys setups, called from the z3rTracker pane.
 on('z3r-extent', (_e, ext) => {
-  if (ext && ext.w > 0 && ext.h > 0) { z3rExtent = { w: ext.w, h: ext.h }; z3rMaps = [0, 1, 2].includes(ext.maps) ? ext.maps : 0; layout(); }
+  if (!(ext && ext.w > 0 && ext.h > 0)) return;
+  z3rExtent = { w: ext.w, h: ext.h };
+  z3rMaps = [0, 1, 2].includes(ext.maps) ? ext.maps : 0;
+  const scr = ext.screen === 'settings' || ext.screen === 'dialog' ? ext.screen : 'panels';
+  if (scr === 'panels') {
+    // cached for the next launch's custom arrangement
+    const key = mode === 'vertical' ? 'vertical' : 'wide';
+    if (key === 'wide' || custom || (geo?.kind === 'vertical' && Math.abs(geo.rightW / geo.z3rZoom - Z3R_FLOW_W) < 1)) {
+      const v = { w: Math.round(ext.w), h: Math.round(ext.h), maps: z3rMaps }, c = cfg.z3rExtents[key];
+      if (!c || c.w !== v.w || c.h !== v.h || c.maps !== v.maps) { cfg.z3rExtents[key] = v; saveConfig(); }
+    }
+  }
+  if (custom) {
+    custom.screen = scr;
+    if (scr === 'panels') { custom.panels = { w: ext.w, h: ext.h }; custom.liveMaps = z3rMaps; }
+  }
+  layout();
 });
 handle('setups-list', () => listSetups());
 handle('setups-get', (_e, id) => readSetups().find((s) => s.id === id)?.doc || null);
@@ -1041,19 +1264,35 @@ async function debugShots(dir) {
   }
   for (const n of ['tracker', 'timer', 'race', 'controls', 'z3r']) {
     if (!views[n].getVisible()) continue;
-    const img = await views[n].webContents.capturePage();
-    fs.writeFileSync(path.join(dir, n + '.png'), img.toPNG());
+    const img = await Promise.race([views[n].webContents.capturePage().catch(() => null), new Promise((r) => setTimeout(() => r(null), 3000))]);
+    if (img) fs.writeFileSync(path.join(dir, n + '.png'), img.toPNG());
   }
   const bounds = Object.fromEntries(Object.entries(views).filter(([, v]) => v.getVisible()).map(([k, v]) => [k, v.getBounds()]));
   const { width: W, height: H } = win.getContentBounds();
-  fs.writeFileSync(path.join(dir, 'geo.json'), JSON.stringify({ geo: { ...geo, W, H }, mode, bounds }, null, 1));
+  const zoom = Object.fromEntries(['tracker', 'timer', 'race', 'controls', 'z3r'].filter((n) => views[n].getVisible()).map((n) => [n, views[n].webContents.getZoomFactor()]));
+  const order = win.contentView.children.map((c) => Object.keys(views).find((k) => views[k] === c));
+  const cs = custom && { key: custom.key, saved: custom.saved, screen: custom.screen, liveMaps: custom.liveMaps, panels: custom.panels, ext: custom.ext };
+  fs.writeFileSync(path.join(dir, 'geo.json'), JSON.stringify({ geo: { ...geo, W, H }, mode, bounds, zoom, order, custom: cs, content: { W, H }, window: win.getBounds() }, null, 1));
   if (process.env.SHOT_QUIT) app.quit();
 }
 
 async function launcherShot(dir) {
   fs.mkdirSync(dir, { recursive: true });
   await new Promise((r) => setTimeout(r, 1500));
-  if (process.env.SHOT_LAUNCHER_JS) await launcher.webContents.executeJavaScript(process.env.SHOT_LAUNCHER_JS).catch(() => {});
+  if (process.env.SHOT_LAUNCHER_JS) {
+    const out = await launcher.webContents.executeJavaScript(process.env.SHOT_LAUNCHER_JS, true).catch((e) => String(e));
+    fs.writeFileSync(path.join(dir, 'launcher.json'), JSON.stringify(out ?? null, null, 1));
+  }
+  if (process.env.SHOT_LAUNCHER_STEPS) {
+    const res = [];
+    for (const js of JSON.parse(process.env.SHOT_LAUNCHER_STEPS)) {
+      await new Promise((r) => setTimeout(r, +(process.env.SHOT_AFTER_JS || 1500)));
+      if (!launcher || launcher.isDestroyed()) break;
+      res.push(await launcher.webContents.executeJavaScript(js, true).then((v) => v ?? null, (e) => String(e)));
+      fs.writeFileSync(path.join(dir, 'launcher-steps.json'), JSON.stringify(res, null, 1));
+    }
+  }
+  if (!launcher || launcher.isDestroyed()) return;
   if (process.env.SHOT_SITE) {
     const before = { ...cfg.urls };
     for (const kind of process.env.SHOT_SITE.split(',')) {
@@ -1066,7 +1305,8 @@ async function launcherShot(dir) {
     fs.writeFileSync(path.join(dir, 'capture.json'), JSON.stringify({ before, after: cfg.urls }, null, 1));
   }
   await new Promise((r) => setTimeout(r, +(process.env.SHOT_DELAY || 1500)));
-  fs.writeFileSync(path.join(dir, 'launcher.png'), (await launcher.webContents.capturePage()).toPNG());
+  const img = await launcher.webContents.capturePage().catch(() => null);
+  if (img) fs.writeFileSync(path.join(dir, 'launcher.png'), img.toPNG());
   if (process.env.SHOT_QUIT) app.quit();
 }
 

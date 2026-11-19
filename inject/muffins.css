@@ -1,6 +1,6 @@
 html, body { overflow: hidden !important; background: #000 !important; margin: 0 !important; }
 #app { overflow: visible !important; }
-#maintracker { transform: scale(var(--it-scale, 1)); transform-origin: 0 0; }
+#maintracker { transform: translate(var(--it-left, 0px), var(--it-top, 0px)) scale(var(--it-scale, 1)); transform-origin: 0 0; }
 #map {
   position: absolute !important;
   left: var(--map-left, 0px) !important;

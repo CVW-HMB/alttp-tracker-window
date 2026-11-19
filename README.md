@@ -32,6 +32,8 @@ Drag the dividers to resize; double-click one to reset it. View > Layout has two
 
 **Vertical** layout, for smaller screens: items over the light and dark world maps on the left, sized to the window height; xkeys panels, stats tracker and race room on the right. The muffins tracker is switched to stacked maps for it (for 2.0, the session's own map mode comes back in Wide). GGW's maps are not shown in Vertical.
 
+**Custom layout**: tick **Launch with custom layout** beside the Launch button. Launch then shows a small outline of the window with a labelled box for each widget, starting from the Wide or Vertical arrangement. Drag the boxes where you want them; the stats tracker and race room can also be resized. Boxes snap together and cannot overlap, and the window is sized to fit what you arranged. **Confirm** launches with it and remembers it for next time; **Reset** goes back to the standard arrangement. The window opens at the trackers' natural size and scales as a whole when resized.
+
 ## Privacy
 
 - The app sends nothing anywhere. It has no analytics, telemetry or update checks.

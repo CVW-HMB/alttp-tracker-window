@@ -3,8 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 const SEND = [
   'drag-start', 'drag-move', 'drag-end', 'drag-reset', 'set-option', 'load-race', 'race-nav', 'open-launcher',
   'open-site-launcher', 'update-muffins', 'set-url', 'launch',
+  'open-layout-editor', 'layout-editor-confirm', 'layout-editor-cancel',
 ];
-const INVOKE = ['launcher-state'];
+const INVOKE = ['launcher-state', 'layout-editor-state'];
 const LISTEN = ['state', 'focus-url', 'launcher-state'];
 
 contextBridge.exposeInMainWorld('api', {

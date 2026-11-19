@@ -29,18 +29,20 @@ label.settings-inline:has(> #config-file), #config-summary, #export-settings { d
 .menu-panel { top: 0 !important; right: calc(100% + 4px) !important; margin-top: 0 !important; flex-direction: row !important; flex-wrap: wrap !important; align-items: center !important; max-width: 1000px; }
 
 /* GGW maps placed in row 1 by the app; panels pushed down into the band. */
-html.app-ggw-maps .location-container { margin-top: var(--band-top, 0px) !important; }
+html.app-ggw-maps .location-container { margin-top: var(--band-top, 0px) !important; margin-left: var(--band-left, 0px) !important; }
 html.app-ggw-maps #light-world-container,
 html.app-ggw-maps #dark-world-container,
-html.app-ggw-maps #one-map { zoom: var(--gm-z, 1) !important; top: 0 !important; }
+html.app-ggw-maps #one-map { zoom: var(--gm-z, 1) !important; top: var(--gm-top, 0px) !important; }
 html.app-ggw-maps #light-world-container, html.app-ggw-maps #one-map { left: var(--gm-left-1, 0px) !important; }
 html.app-ggw-maps #dark-world-container { left: var(--gm-left-2, 0px) !important; }
 html.app-ggw-maps .map-container > .zoom-in,
 html.app-ggw-maps .map-container > .zoom-out,
 html.app-ggw-maps .map-container > .drag-map { display: none !important; }
-html.app-ggw-maps .menu-wrap { top: auto !important; bottom: 24px !important; }
+html.app-ggw-maps .menu-wrap { top: auto !important; right: calc(var(--band-right, 0px) + 2px) !important; bottom: calc(var(--band-bottom, 0px) + 24px) !important; }
+html.app-ggw-maps .end-race { right: calc(var(--band-right, 0px) + 2px) !important; bottom: calc(var(--band-bottom, 0px) + 2px) !important; }
 
 /* Vertical layout: panels flow in the app's right column instead of the saved positions. */
+html.app-vertical, html.app-vertical body { overflow-x: hidden !important; }
 html.app-vertical #tracker { width: var(--flow-w, 520px); padding: 2px 64px 2px 2px; box-sizing: border-box; }
 html.app-vertical .location-container {
   position: relative !important; left: auto !important; top: auto !important; height: auto !important;
